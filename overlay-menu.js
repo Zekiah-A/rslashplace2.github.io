@@ -12,6 +12,23 @@ function updateOverlayImage() {
     overlayMenuCanvas.width = overlayMenuInnerBox.offsetWidth
     overlayMenuCanvas.height = overlayMenuInnerBox.offsetHeight
 
+    let dragging = false
+    let dragX = 0
+    let dragY = 0
+
+    overlayMenuCanvas.onmousedown = function() {
+        dragging = true
+    }
+    overlayMenuCanvas.onmousemove = function(event) {
+        if (dragging) {
+            dragX += event.movementX
+            dragY += event.movementY
+        }
+    }
+    overlayMenuCanvas.onmouseup = function() {
+        dragging = false
+    }
+
     const canvasTex = Texture(WIDTH, HEIGHT, _, Formats.R8, PIXELATED)
     canvasTex.putData(0, 0, WIDTH, HEIGHT, board)
 
@@ -32,13 +49,30 @@ function updateOverlayImage() {
         }
     `)
 
+    function getBounds(x, y, width, height) {
+        const canvasWidth = overlayMenuCanvas.width
+        const canvasHeight = overlayMenuCanvas.height
+
+        const scaleX = canvasWidth / window.innerWidth
+        const scaleY = canvasHeight / window.innerHeight
+
+        const startX = x * scaleX
+        const startY = y * scaleY
+        const endX = (x + width) * scaleX
+        const endY = (y + height) * scaleY
+
+        return { sx: startX, sy: startY, ex: endX, ey: endY }
+    }
+
     function drawOverlay() {
         if (overlayCanvasHandle === null) {
             return
         }
         const oldShader = ctx.useShader(canvasShader)
-        const imgMesh = Mesh.singleRect(0, 0, 1, 1)
-        ctx.draw(imgMesh, [canvasTex, paletteTex])
+        const canvasBounds = getBounds(dragX, dragY, 1000, 1000)
+        const canvasMesh = Mesh.singleRect(canvasBounds.sx, canvasBounds.sy,
+            canvasBounds.ex, canvasBounds.ey)
+        ctx.draw(canvasMesh, [canvasTex, paletteTex])
         ctx.useShader(oldShader)
 
         overlayCanvasHandle = requestAnimationFrame(drawOverlay)
