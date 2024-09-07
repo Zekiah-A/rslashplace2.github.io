@@ -357,6 +357,8 @@
             right: 4px;
             opacity: 0;
             transition: .2s opacity;
+            display: flex;
+            column-gap: 4px;
         }
 
         .player-card-actions > button {
@@ -622,49 +624,7 @@
         <br>
         <div>
             <h2 id="accountHeader">Your Account</h2>
-            <div id="loginPanel" style="display: block;">
-                <input id="loginUsername" type="text" placeholder="Username" style="display: block; width: 256px;"
-                    maxlength="10">
-                <input id="loginEmail" type="text" placeholder="Email" style="display: block; width: 256px;"
-                    maxlength="32">
-            </div>
-            <div id="preLoginOptions">
-                <a href="#dashboard" onclick="
-                    if (loginPanel.style.display == 'block') {
-                        let buffer = encoder.encode('X' + loginUsername.value.padEnd(10) + loginEmail.value.padEnd(32))
-                        buffer[0] = ClientPackets.Authenticate
-                        ws.send(buffer)
-
-                        loginPanel.style.display = 'none'
-                        preLoginOptions.style.display = 'none'
-                        signoutOptions.style.display = 'block'
-                        localStorage.username = btoa(loginUsername.value)
-                        localStorage.password = btoa(loginEmail.value)
-                        setTimeout(() => {
-                            ws.send(new Uint8Array([ClientPackets.AccountInfo]))
-                            ws.send(new Uint8Array([ClientPackets.LocateWorkers]))
-                        }, 100) // TODO: Unjank
-                    }
-                    else {
-                        loginPanel.style.display = 'block'
-                        signupPanel.style.display = 'none'
-                    }
-                ">Login</a>
-                <span style="color: gray;">•</span>
-                <a href="./index.hml">Signup</a>
-            </div>
-            <div id="signoutOptions" style="display: none;">
-                <a href="#dashboard" onclick="window.location.reload()">Log out</a>
-            </div>
-            <p id="loginSignupMessage" style="color: red; font-size: small;"></p>
-            <br>
-            <div id="accountInfo" style="display: none;">
-                <h4>Account info:</h4>
-                <div>Account name: <span id="accountName"></span></div>
-                <div>Account email: <span id="accountEmail"></span></div>
-                <div>Billing info: <span id="accountBilling"></span></div>
-                <a href="#dashboard">Delete account</a>
-            </div>
+            <a href="./posts.html/?action=login&referrer=/instance.html">Go to account login page</a>
         </div>
     </div>
     <div id="servers">
@@ -704,6 +664,7 @@
                         <div class="player-card-actions">
                             <button>Kick</button>
                             <button>Ban</button>
+                            <button>Mute</button>
                             <button>Message</button>
                         </div>
                     </div>

@@ -1019,31 +1019,33 @@
 			call(addEventListener, document.body, "keydown", function(e) {
 				if (!e.isTrusted) return
 
-				//"Shift+O" to open overlay menu
-				if (e.key === "O" && e.shiftKey && !("value" in document.activeElement)) {
-					e.preventDefault()
-					overlayMenu.toggleAttribute("opened")
-				}
-				else if (e.key === "/" && !("value" in document.activeElement)) {
-					e.preventDefault()
-					openChatPanel()
-					messageInput.focus()
-				}
-				else if (e.key === "Escape") {
-					// TODO: Not optimal, but it works for now
-					e.preventDefault()
-					modal.style.display = "flex"
-					bg.style.display = "block"
-				}
-				else if (e.key === "=" || e.key == "+") {
-					e.preventDefault()
-					z += 0.02
-					pos()
-				}
-				else if (e.key === "-") {
-					e.preventDefault()
-					z -= 0.02
-					pos()
+				if (!("value" in document.activeElement)) {
+					//"Shift+O" to open overlay menu
+					if (e.key === "O" && e.shiftKey && !("value" in document.activeElement)) {
+						e.preventDefault()
+						overlayMenu.showModal()
+					}
+					else if (e.key === "/" ) {
+						e.preventDefault()
+						openChatPanel()
+						messageInput.focus()
+					}
+					else if (e.key === "Escape") {
+						// TODO: Not optimal, but it works for now
+						e.preventDefault()
+						modal.style.display = "flex"
+						bg.style.display = "block"
+					}
+					else if (e.key === "=" || e.key == "+") {
+						e.preventDefault()
+						z += 0.02
+						pos()
+					}
+					else if (e.key === "-") {
+						e.preventDefault()
+						z -= 0.02
+						pos()
+					}
 				}
 
 				// Move around with arrow keys
@@ -1229,6 +1231,7 @@
 	<script type="application/javascript" src="event-timer.js" defer></script>
 	<script type="application/javascript" src="quests.js" defer></script>
 	<script type="application/javascript" src="captcha-canvas.js"></script>
+	<script type="application/javascript" src="overlay-menu.js" defer></script>
 	<script type="application/javascript" src="darkplace.js"></script>
 	<script type="application/javascript" src="canvas-snow.min.js"></script>
 	<script type="application/javascript" src="snowplace.js"></script>
@@ -1266,58 +1269,89 @@
 				<!--Special background effects or features can be rendered within here-->
 			</div>
 			<div id="posel" noselect>(0,0) 2.5x</div>
-			<div id="overlayMenu" noselect class="toast-menu">
+			<dialog id="overlayMenu" class="dialog-modal" noselect>
 				<div style="display: flex;">
 					<h2 title="Make use of a canvas overlay image in order to help yourself better position your pixels" style="display: inline;flex-grow: 1;">Overlay:</h2>
-					<r-close-icon onclick="overlayMenu.removeAttribute('opened')" class="active"></r-close-icon>
+					<r-close-icon onclick="overlayMenu.close()" class="active"></r-close-icon>
 				</div>
-				<br><br>
-				<input id="overlayInput" type="file" style="width: 100%;"/> <br><br>
-				<input value="" type="number" onchange="
-					overlayInfo.x = +this.value || 0
-					templateImage.style.transform = `translate(${overlayInfo.x}px, ${overlayInfo.y}px)`
-				" placeholder="Image X" style="width: calc(50% - 5px); margin-right: 5px;"/>
-				<input value="" type="number" onchange="
-					overlayInfo.y = +this.value || 0
-					templateImage.style.transform = `translate(${overlayInfo.x}px, ${overlayInfo.y}px)`
-				" placeholder="Image Y" style="width: calc(50% - 5px)"/> <br><br>
-				<div style="width: 100%; position: relative;">
-					<input id="overlayOpacity" type="range" onchange="
-						overlayInfo.opacity = (+this.value || 80) / 100
-						templateImage.style.opacity = overlayInfo.opacity
-					" min="0" value="80" max="100" style="width: 100%;" oninput="overlaySliderValue.textContent = Math.min(this.value, 99); overlaySliderValue.style.left = `calc(${this.value / 100} * 90%)`;"/>
-					<label for="overlayOpacity" style="position: absolute;left: 8px;top: 50%;transform: translateY(-50%);opacity: 0.6;">Opacity</label>
-					<span id="overlaySliderValue" style="position: absolute; white-space: pre-wrap; left: calc(0.8 * 90%); transform: translateX(10px); bottom: 12.5px; pointer-events: none; width: 16px; text-align: center;">80</span>
+				<div id="overlayMenuInnerBox" class="modal-inner-container" style="flex-grow: 3;">
+					<canvas id="overlayMenuCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></canvas>
+					<div style="display: flex; flex-direction: column; width: 64px; row-gap: 8px; padding: 8px; top: 8px; left: 8px;  position: absolute;">
+						<button><img class="icon-image" src="svg/edit.svg"></button>
+						<button><img class="icon-image" src="svg/rubber.svg"></button>
+						<button><img class="icon-image" src="svg/clear.svg"></button>
+					</div>
 				</div>
-				<br>
-				<div style="position: relative; display: flex;" onclick="
-					event.stopPropagation();
-					(async function(_this){
-						let uriString = await generateOverlayUrl()
-						if (uriString.length < 2000) {
-							navigator.clipboard.writeText(uriString)
-							_this.children[2].animate([
-								{ opacity: 1 },
-								{ scale: 1.1 }
-							], { duration: 1000, iterations: 1 })
-						}
-						else {
-							_this.children[2].textContent = 'Failed: Overlay is too big!'
-							_this.children[2].animate([
-								{ opacity: 1 },
-								{ color: 'red' }
-							], { duration: 1000, iterations: 1 })
-							if (_this['failMsgTimeout']) clearTimeout(_this['failMsgTimeout'])
-							_this['failMsgTimeout'] = setTimeout(() => {
-								_this.children[2].textContent = 'Copied to clipboard!'
-							}, 1000)
-						}
-					})(this);
-				" title="copy canvas link">
-					<img class="icon-image" src="svg/clipboard.svg">
-					<span style="align-self: center; margin-right: 8px;cursor: pointer;">Copy overlay URL</span>
-					<span style="opacity: 0; align-self: center;">Copied to clipboard!</span>
+				<div style="flex-grow: 1; display: flex; column-gap: 16px;">
+					<div style="flex-grow: 1; display: flex; flex-direction: column; row-gap: 8px;">
+						<h2>Select image:</h2>
+						<input id="overlayInput" type="file" style="width: fit-content;">
+						<h2>Share</h2>
+						<div style="position: relative; display: flex;" onclick="
+							event.stopPropagation();
+							(async function(_this){
+								let uriString = await generateOverlayUrl()
+								if (uriString.length < 2000) {
+									navigator.clipboard.writeText(uriString)
+									_this.children[2].animate([
+										{ opacity: 1 },
+										{ scale: 1.1 }
+									], { duration: 1000, iterations: 1 })
+								}
+								else {
+									_this.children[2].textContent = 'Failed: Overlay is too big!'
+									_this.children[2].animate([
+										{ opacity: 1 },
+										{ color: 'red' }
+									], { duration: 1000, iterations: 1 })
+									if (_this['failMsgTimeout']) clearTimeout(_this['failMsgTimeout'])
+									_this['failMsgTimeout'] = setTimeout(() => {
+										_this.children[2].textContent = 'Copied to clipboard!'
+									}, 1000)
+								}
+							})(this);
+						" title="copy canvas link">
+							<img class="icon-image" src="svg/clipboard.svg">
+							<span style="align-self: center; margin-right: 8px;cursor: pointer;">Copy overlay URL</span>
+							<span style="opacity: 0; align-self: center;">Copied to clipboard!</span>
+						</div>
+					</div>
+					<hr>
+					<div style="flex-grow: 1; display: flex; flex-direction: column; row-gap: 8px;">
+						<h2>Adjust image</h2>
+						<h4>Colour matching:</h4>
+						<div>
+							<input type="radio" name="overlayMatch" id="overlayMatchNearest">
+							<label for="overlayMatchNearest">Nearest match</label>
+						</div>
+						<div>
+							<input type="radio" name="overlayMatch" id="overlayMatchIgnore">
+							<label for="overlayMatchIgnore">Ignore invalid colours</label>
+						</div>
+						<h4>Image options:</h4>
+						<div>
+							<input type="checkbox" id="overlaySharpen">
+							<label for="overlaySharpen">Sharpen image edges</label>
+						</div>
+						<div>
+							<input type="checkbox" id="overlayFlipX">
+							<label for="overlayFlipX">Flip image X</label>
+						</div>
+						<div>
+							<input type="checkbox" id="overlayFlipY">
+							<label for="overlayFlipY">Flip image Y</label>
+						</div>
+					</div>
 				</div>
+			</dialog>
+			<div noselect="" class="toast-menu" id="turnstileMenu">
+				<div style="display: flex;">
+					<h2 title="Make use of a canvas overlay image in order to help yourself better position your pixels"
+						style="display: inline;flex-grow: 1;">Verifying session...</h2>
+						<icon-close style="opacity: 0.6; pointer-events: none;" class="active"></icon-close>
+				</div>
+				<p>Don't worry, this process should be automatic!</p><br>
+				<div id="turnstileContainer"></div>
 			</div>
 			<div noselect="" class="toast-menu" id="turnstileMenu">
 				<div style="display: flex;">
@@ -1357,7 +1391,7 @@
 							found = message
 						}}
 						modMessagePreview.innerHTML = found?.innerHTML ?? 'Message not found'">
-					<div id="modMessagePreview">Message not found</div>
+					<div id="modMessagePreview" class="modal-inner-container">Message not found</div>
 				</div>
 				<input type="number" id="modMemberId"  title="Member ID" placeholder="Member ID">
 				<h4>Action:</h4>
@@ -1798,7 +1832,7 @@
 			postsFrame.style.minHeight = calcHeight + "px" 
 		}
 		function openOverlayMenu() {
-			overlayMenu.setAttribute("opened", "true")
+			overlayMenu.showModal()
 		}
 		function scrollToPosts() {
 			postsFrame.scrollIntoView({ behavior: "smooth", block: "start", inline: "start" })
@@ -1840,7 +1874,7 @@
 
 		// Load more posts on scroll down
 		more.addEventListener("scroll", function(e) {
-		    const moreMaxScroll = more.scrollHeight - more.clientHeight
+			const moreMaxScroll = more.scrollHeight - more.clientHeight
 			if (moreMaxScroll - more.scrollTop < 256) {
 				sendPostsFrameMessage("tryLoadBottomPosts")
 			}
@@ -2006,7 +2040,7 @@
 		}
 		showLoadingScreen()
 
-		function setSize(w, h = w) {
+		function setSize(w, h) {
 			canvas.width = WIDTH = w
 			canvas.height = HEIGHT = h
 			canvparent1.style.width = w + "px"
@@ -2024,9 +2058,10 @@
 					case "x": x = +value || 0; pos(); break
 					case "y": y = +value || 0; pos(); break
 					case "z": z = +value || 0; break
-					case "err": onerror = alert; break
+					case "error": onerror = alert; break
 					case "overlay":
-						overlayInfo = JSON.parse(atob(value))
+						// RODO: Reimplement
+						/*overlayInfo = JSON.parse(atob(value))
 						const decoded = atob(overlayInfo.data)
 						const data = new Uint8Array(new ArrayBuffer(decoded.length))
 						for (let i = 0; i < decoded.length; i++) data[i] = decoded.charCodeAt(i)
@@ -2038,8 +2073,8 @@
 						templateImage.style.opacity = +overlayInfo.opacity || 0.8
 						x = overlayInfo.x
 						y = overlayInfo.y
-						pos()
-						overlayMenu.setAttribute('opened', 'true')
+						pos()*/
+						overlayMenu.showModal()
 						break
 				}
 			}
@@ -2247,11 +2282,10 @@
 			this.play().catch(e => e)
 		}
 
-		const localStorageBoolValues = [ undefined, "true", "false" ]
-		if (!localStorageBoolValues.includes(localStorage.muted)) {
+		if (localStorage.muted !== "true" || localStorage.muted !== "false") {
 			localStorage.muted = "false"
 		}
-		if (!localStorageBoolValues.includes(localStorage.placeChat)) {
+		if (localStorage.placeChat !== "true" || localStorage.placeChat !== "false") {
 			localStorage.placeChat = "true"
 		}
 		let muted = localStorage.muted === "true"

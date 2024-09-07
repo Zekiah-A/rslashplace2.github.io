@@ -26,6 +26,10 @@ input[type="radio"] {
     width: 16px;
 }
 
+input[type="checkbox"] {
+    height: auto;
+}
+
 button, input[type="button"], textarea {
     border: var(--pixel-border);
     background-color: white;
@@ -84,6 +88,10 @@ body {
 
 #themeDropParent {
     border-bottom: var(--pixel-border);
+}
+
+.dialog-modal {
+	padding: 16px;
 }
 
 .context-menu {
@@ -297,6 +305,10 @@ r-close-icon {
 }
 
 #modMessagePreview {
+    opacity: 0.8;
+}
+
+.modal-inner-container {
 	border: var(--pixel-border);
 	padding: 8px;
 	background: #f7f7f7;

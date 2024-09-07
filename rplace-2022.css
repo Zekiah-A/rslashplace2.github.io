@@ -1,6 +1,7 @@
 :root {
 	--ui-background: #333;
 	--ui-panel-hover: lightgrey;
+	--ui-panel-inner: #f7f7f7;
 	--ui-panel-bg: white;
 	--ui-text: black;
 }
@@ -8,6 +9,7 @@
 :root[data-variant="dark"] {
 	--ui-background: black;
 	--ui-panel-hover: #313131;
+	--ui-panel-inner: #0e0e0e;
 	--ui-panel-bg: #141414;
 	--ui-text: white;
 }
@@ -63,6 +65,7 @@ input[type="radio"] {
 
 input[type="checkbox"] {
 	appearance: auto;
+	height: auto;
 }
 
 input[type=file]::file-selector-button {
@@ -181,6 +184,14 @@ a {
 	border-radius: 18px;
 }
 
+.dialog-modal {
+	padding: 10px;
+	background: var(--ui-panel-bg);
+	border-radius: 15px;
+	border: none;
+	row-gap: 8px;
+}
+
 .context-menu {
 	background: var(--ui-panel-bg);
 	border-radius: 5px;
@@ -280,11 +291,11 @@ a {
 	border-radius: 15px;
 }
 
-#modMessagePreview {
+.modal-inner-container {
 	border-radius: 12px;
 	padding: 8px;
 	box-shadow: inset 2px 2px #dbdbdb;
-	background: #f7f7f7;
+	background: var(--ui-panel-inner);
 	padding: 4px;
 	border: 1px solid lightgray;
 }

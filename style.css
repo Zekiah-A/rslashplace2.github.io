@@ -264,6 +264,21 @@ r-close-icon {
 	cursor: pointer;
 }
 
+.dialog-modal {
+	color: var(--ui-text);
+	margin: auto;
+	flex-direction: column;
+}
+
+.dialog-modal[open] {
+	display: flex;
+}
+
+#overlayMenu {
+	width: min(100%, 800px);
+	height: 600px;
+}
+
 mute-button {
 	bottom: -2px;
 	left: -6px;
@@ -1030,6 +1045,14 @@ body[eventphase="3"] .coverer-title {
 }
 #modMessagePreview > div {
 	display: none;
+}
+
+.modal-inner-container {
+	position: relative;
+}
+
+#overlayMenuInnerBox {
+	overflow: clip;
 }
 
 .mod-form {
