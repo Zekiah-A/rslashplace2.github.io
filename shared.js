@@ -9,6 +9,7 @@ const DEFAULT_AUTH = "https://server.rplace.live/auth"
 
 const TRANSLATIONS = {
     en: {
+        // Game
         connecting: "Connecting...",
         connectingFail: "Could not connect!",
         downloadingImage: "Downloading image...",
@@ -43,8 +44,17 @@ const TRANSLATIONS = {
         placedBy: "Placed by:",
         lockMessage: "This canvas is locked... You can't place pixels here anymore",
         adHidden: "Ad hidden for 14 days!",
-        specialEventTitle: "Special event - 2023-2024 full canvas timelapse released!",
-        copiedToClipboard: "Copied to clipboard!"
+        specialEventTitle: "Special event - August 21st!",
+        copiedToClipboard: "Copied to clipboard!",
+        // Posts
+        rplaceLivePosts: "rplace.live posts",
+        searchKeyword: "Search keyword",
+        createPost: "Create post",
+        communityPosts: "Community posts",
+        sortBy: "Sort by:",
+        hideSensitive: "Hide sensitive:",
+        date: "Date",
+        upvotes: "Upvotes",
     },
     fa: {
         connecting: "در حال وصل شدن",
@@ -93,7 +103,7 @@ const TRANSLATIONS = {
         overlayMenu: "Bindirme menüsü",
         modalAboutContent: "Boş bir tuval var.<br><br>Üzerine renkli bir piksel koyabilirsiniz ama yenisini yerleştirmek için beklemeniz gerekir.<br><br>Tek başınıza bir şeyler yapabilirsiniz.<br><br>Topluluk ile daha fazlasını yapabilirsiniz.",
         overlayMenuDesciption: "Haritanın üzerine bir fotoğraf koyun ve onu çizin!",
-        specialEventTitle: "Özel etkinlik - 2023-2024 tam tuval timelapse yayınlandı!"
+        specialEventTitle: "Özel etkinlik - August 21st!"
     },
     ro: {
         connecting: "Se conectează...",
@@ -151,7 +161,7 @@ const TRANSLATIONS = {
         pleaseBeRespectful: "Por favor se respetuoso!",
         enterNickname: "Introduce el apodo...",
         enterMessage: "Introduce el mensaje...",
-        specialEventTitle: "Evento especial: ¡lanzamiento del timelapse completo del lienzo 2023-2024!"
+        specialEventTitle: "Evento especial - August 21st!"
     },
     fr: {
         connecting: "De liaison...",
@@ -336,6 +346,21 @@ function translate(key) {
         return TRANSLATIONS[lang][key] || TRANSLATIONS["en"][key]
     else
         return TRANSLATIONS["en"][key] || key
+}
+
+function translateAll() {
+	document.querySelectorAll("[translate]").forEach((element) => {
+		const key = element.getAttribute("translate")
+		if (TRANSLATIONS[lang] == null) return
+		if (element.nodeName === "INPUT" || element.nodeName === "TEXTAREA") {
+			if (element.getAttribute("type") == "text")
+				element.placeholder = TRANSLATIONS[lang][key] || element.placeholder
+			else
+				element.value = TRANSLATIONS[lang][key] || element.value
+		}
+		else
+			element.innerHTML = TRANSLATIONS[lang][key] || element.innerHTML
+	})
 }
 
 class PublicPromise {

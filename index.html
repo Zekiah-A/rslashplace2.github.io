@@ -185,7 +185,7 @@
 			call(addEventListener, window, "focus", () => focused = true)
 
 			let authSocket = {} //new WebSocket("wss://server.poemanthology.org/auth")
-			// HACK: Until enough clients are using the new server 
+			// HACK: Until enough clients are using the new server
 			if (localStorage.server?.startsWith("wss://server.rplace.tk")) {
 				delete localStorage.server
 			}
@@ -509,7 +509,7 @@
 					let i = data.getUint32(1)
 					const regionWidth = data.getUint8(5)
 					const regionHeight = data.getUint8(6)
-					 
+
 					let dataI = 7
 					while (dataI < data.byteLength) {
 						for (let xi = i; xi < i + regionWidth; xi++) {
@@ -600,7 +600,7 @@
 					// TODO: Localise
 					if (state === PUNISHMENT_STATE.mute) {
 						messageInput.disabled = true
-						punishmentNote.innerHTML = "You have been <stronng>muted</stronng>, you can not send messages in live chat." 
+						punishmentNote.innerHTML = "You have been <stronng>muted</stronng>, you can not send messages in live chat."
 					}
 					else if (state === PUNISHMENT_STATE.ban) {
 						messageInput.disabled = true
@@ -850,7 +850,7 @@
 			}
 			setName = _setName
 
-			// Requests all the pixel placers for a given region from the server to be loaded into 
+			// Requests all the pixel placers for a given region from the server to be loaded into
 			function _requestPixelPlacers(x, y, width, height) {
 				if (ws.readyState !== ws.OPEN) {
 					throw new Error("Could not request pixel placers, websocket state is not open")
@@ -1229,13 +1229,14 @@
 	<script type="application/javascript" src="uv.min.js"></script>
 	<script type="application/javascript" src="elements.js?v=6" defer></script>
 	<script type="application/javascript" src="event-timer.js" defer></script>
+	<script type="application/javascript" src="august21-event.js" defer></script>
 	<script type="application/javascript" src="quests.js" defer></script>
 	<script type="application/javascript" src="captcha-canvas.js"></script>
 	<script type="application/javascript" src="overlay-menu.js" defer></script>
 	<script type="application/javascript" src="darkplace.js"></script>
 	<script type="application/javascript" src="canvas-snow.min.js"></script>
 	<script type="application/javascript" src="snowplace.js"></script>
-	<script type="application/javascript" src="shared.js?v=2"></script>
+	<script type="application/javascript" src="shared.js?v=3"></script>
 	<script type="application/javascript" src="tsparticles.confetti.bundle.min.js"></script>
 	<link rel="stylesheet" type="text/css" href="virtual-select.min.css">
 	<link rel="manifest" href="manifest.json">
@@ -1244,7 +1245,7 @@
 	<meta name="apple-mobile-web-app-title" content="place">
 	<meta http-equiv="X-UA-Compatible" content="IE=edge">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<link href="style.css?v=350" rel="stylesheet"> <!-- Increment the CSS query, such as ?v=1.x every time CSS is changed in order to force clients to refresh their stylesheets. Otherwise broken CSS may occur-->
+	<link href="style.css?v=351" rel="stylesheet"> <!-- Increment the CSS query, such as ?v=1.x every time CSS is changed in order to force clients to refresh their stylesheets. Otherwise broken CSS may occur-->
 	<title>place</title>
 	<link rel="icon" type="image/x-icon" href="favicon.png">
 <meta property="og:title" content="r/place 2"/>
@@ -1484,13 +1485,51 @@
 			</div>
 			<dialog id="popup">
 				<div>
-					<r-close-icon onclick="timelapseEmbed?.remove(); localStorage.nopopup = Date.now(); popup.close()"></r-close-icon>
-					<span noselect style="font-size: 1.2em; margin-bottom: 16px;" translate="specialEventTitle">Special event - 2023-2024 full canvas timelapse released!</span>
+					<r-close-icon onclick="localStorage.nopopup = Date.now(); popup.close()"></r-close-icon>
+					<span noselect style="font-size: 1.2em; font-weight: bold;" translate="specialEventTitle">Special event - August 21st!</span>
+					<!-- Popup content -->
 					<!--<img src="images/discord-popup.png" style="width: 100%;position: absolute;bottom: 0;cursor: pointer;"
-							onclick="window.open('https:\/\/www.reddit.com/r/place/?screenmode=fullscreen&amp;cx=585&amp;cy=362&amp;px=20')">
-					<iframe id="timelapseEmbed" src="https://www.youtube-nocookie.com/embed/H67q2HfYl7s" title="YouTube video player"
+							onclick="window.open('https:\/\/www.reddit.com/r/place/?screenmode=fullscreen&amp;cx=585&amp;cy=362&amp;px=20')">-->
+					<!--<iframe id="timelapseEmbed" src="https://www.youtube-nocookie.com/embed/H67q2HfYl7s" title="YouTube video player"
 						frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
 						allowfullscreen="true" width="100%" height="100%"></iframe>-->
+					<div class="august21-popup-content">
+						<div>
+							<h1>HAPPY AUGUST 21st 🪑‍🔥🪑‍🔥 Δ ΔΔ</h1>
+							<em>A day of chaos and destruction, randomness and all things <strong>Mad.</strong></em>
+							<a class="hidden-question" href="javascript:alert('Doesn\'t matter, August 21st is forever...')">It's not August 21st though?</a>
+						</div>
+						<h2>What was that countdown thing though?</h2>
+						<p>
+							A game, canon to the site's history, community and  other memes, titled August 21st
+							and developed by Zekiah-A was planned to release as part of the August 21st event,
+							due to some very <abbr title="Context: Zekiah found out that you can't spend 25 hours per day on development (he was very surprised)">
+							random and unexpected events</abbr>, the game is expected to become available
+							to all players some time between 21/08/24 and September 11th...
+						</p>
+						<div style="position: relative;">
+							<img src="images/august21-cover.png" style="width: 100%;height: 100%;flex-grow: 1;border-radius: 4px;">
+							<span id="august21PopupLabel" style="border-radius: 100px; height: 24px; background: var(--ui-panel-bg); display: flex; column-gap: 4px;position: absolute;left: 50%;top: 50%;transform: translate(-50%);padding: 5px;line-height: 15px;">
+								<img src="svg/lock.svg" height="16" width="16">
+								Coming soon!
+								<span id="august21PopupTimer"></span>
+							</span>
+							<button id="august21PopupButton" onclick="startAugust21Event()" style="display: none; position: absolute;left: 50%;top: 50%;transform: translate(-50%, -50%);font-size: 36px;border: 6px solid #cdcdcd;padding: 16px;height: fit-content;background: linear-gradient(to bottom right, #d6c275 0%, #cfbc6e 26%, #e5cd84 38%, #f0d990 49%, #f0d990 63%, #b9a563 100%);box-shadow: 0px 0px 16px #00000070;color: white;-webkit-text-stroke: 1px black;font-family: bold;font-weight: 800;">
+								Play now!
+							</button>
+						</div>
+						<h2>Community content:</h2>
+						<p>
+							Discover the lore, learn more, get involved, spread it everywhere. See what others have
+							made for August 21st...
+						</p>
+						<iframe src="https://www.youtube-nocookie.com/embed/opk9bwZczS8?si=Pem-cNwy7YN-8tLY" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+						<iframe src="https://www.youtube-nocookie.com/embed/92cLXnRCIZw?si=YRCyHUc08AxDFNK5" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+						<h2>So what now?</h2>
+						<p>
+							You wait. You look. Turn your eye. Look to andromeda. Do you see it?
+						</p>
+					</div>
 				</div>
 			</dialog>
 			<div noselect id="helpbtn" tabindex="0" class="layout" onclick="
@@ -1578,6 +1617,7 @@
 								<hr style="opacity: 0.2">
 								<li theme="r/place 2022" variant="dark" effects="darkplace"><span>darkplace.live (April fools)</span></li>
 								<li theme="r/place 2022" variant="" effects="winter"><span>snowplace.live (December 2023)</span></li>
+								<!--<li theme="goldplace" variant=""><span>goldplace.live (August 21st 2024)</span></li>-->
 							</ul>
 						</div>
 					</div>
@@ -1825,11 +1865,11 @@
 		let touchmoved = 15
 
 		// Bidirectional IPC, similar to server.ts - db-worker.ts communication
-		// Methods called by posts frame 
+		// Methods called by posts frame
 		function resizePostsFrame() {
 			const calcHeight = postsFrame.contentWindow.document.body.scrollHeight
-			postsFrame.height = calcHeight 
-			postsFrame.style.minHeight = calcHeight + "px" 
+			postsFrame.height = calcHeight
+			postsFrame.style.minHeight = calcHeight + "px"
 		}
 		function openOverlayMenu() {
 			overlayMenu.showModal()
@@ -2356,7 +2396,7 @@
 			}
 			for (const colour of colours.children) {
 				colour.classList.remove("sel")
-			} 
+			}
 			PEN = i
 			canvselect.style.background = e.target.style.background
 			e.target.classList.add("sel")
@@ -2554,7 +2594,7 @@
 			}
 		}
 
-		/* @return {Element | HTMLCollection} */ 
+		/* @return {Element | HTMLCollection} */
 		function stringToHtml(html, trim = true) {
 			const template = document.createElement("template")
 			template.innerHTML = html
@@ -2790,9 +2830,18 @@
 			storage.board = boardAddress
 		}
 
+		async function forceTheme(forceTheme, forceVariant = null , effects = null) {
+			const currentThemeSet = document.documentElement.dataset.theme
+			const currentVariant = document.documentElement.dataset.variant
+			if (currentThemeSet != forceTheme || currentVariant != forceVariant) {
+				console.warn("Forcing site theme to", forceTheme, forceVariant)
+				await theme(DEFAULT_THEMES.get(forceTheme), forceVariant, effects)
+			}
+		}
+
 		let styleElement = null
 		let currentTheme = null
-		async function theme(themeSet, variant = null, effects=null) {
+		async function theme(themeSet, variant = null, effects = null) {
 			variant ??= ""
 
 			// Effects
@@ -2849,23 +2898,11 @@
 		theme(startupThemeSet, localStorage.variant, localStorage.effects)
 		themeDropName.textContent = "🖌️ " + (localStorage.theme || "r/place 2022")
 
-		function translateAll() {
-			document.querySelectorAll("[translate]").forEach((element) => {
-				let key = element.getAttribute("translate")
-				if (TRANSLATIONS[lang] == null) return
-				if (element.nodeName === "INPUT" || element.nodeName === "TEXTAREA") {
-					if (element.getAttribute("type") == "text")
-						element.placeholder = TRANSLATIONS[lang][key] || element.placeholder
-					else
-						element.value = TRANSLATIONS[lang][key] || element.value
-				}
-				else
-					element.innerHTML = TRANSLATIONS[lang][key] || element.innerHTML
-			})
-		}
+		// Apply all translations from shared.js
 		translateAll()
-
-		const clamp = (num, min, max) => Math.min(Math.max(num, min), max)
+		function clamp(num, min, max) {
+			return Math.min(Math.max(num, min), max)
+		}
 
 		function tlMouseMove(e) {
 			if (!tlSelect.getAttribute('dragging') == "true") {
