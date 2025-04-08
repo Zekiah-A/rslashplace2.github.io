@@ -340,4 +340,33 @@ export class LiveChatMessage extends LitElement {
 			${this.#renderActions()}`
 	}
 }
-customElements.define("r-live-chat-message", LiveChatMessage)
+customElements.define("r-live-chat-message", LiveChatMessage);
+
+export class PlaceChatMessage extends LitElement {
+	static properties = {
+		messageId: { type: Number, reflect: true, attribute: "messageid" },
+		senderId: { type: String, reflect: true, attribute: "senderid" },
+		name: { type: String, reflect: true, attribute: "name" },
+		sendDate: { type: Number, reflect: true, attribute: "senddate" },
+		content: { type: String, reflect: true, attribute: "content" }
+	}
+
+	constructor() {
+		super();
+	}
+
+	createRenderRoot() {
+		return this;
+	}
+
+	render() {
+		return html`
+			<div class="container">
+				<span>Placed by:</span>
+				<span></span>
+			</div>
+			<div class="arrow"></div>
+		`
+	}
+}
+customElements.define("r-place-chat-message", PlaceChatMessage);

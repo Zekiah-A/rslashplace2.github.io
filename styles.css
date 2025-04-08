@@ -1693,7 +1693,7 @@ r-gif-panel footer {
 r-gif {
 	display: block;
 	width: min(100%, 256px);
-    overflow: hidden;
+	overflow: hidden;
 }
 
 r-gif video {
@@ -1712,4 +1712,41 @@ r-gif video {
 	height: 600px;
 	width: min(800px, 100% - 16px);
 	background: transparent;
+}
+
+r-place-chat-message {
+	position: absolute;
+	width: max-content;
+	height: max-content;
+	position: absolute;
+	top: 200px;
+	left: 300px;
+	z-index: 3;
+	scale: 5;
+}
+
+r-place-chat-message .container {
+	display: flex;
+	column-gap: 1px;
+	background: white;
+	padding: 0px 1px 0px 1px;
+	text-align: center;
+	width: max-content;
+	font-size: 24px;
+	white-space: pre;
+	padding: 2px 8px 2px 8px;
+	z-index: 1;
+	position: relative;
+}
+
+r-place-chat-message .arrow {
+	width: 24px;
+	height: 24px;
+	background: white;
+	position: absolute;
+	left: 50%;
+	transform: translate(-50%) rotate(45deg);
+	top: calc(100% - 13px);
+	z-index: 2;
+	clip-path: polygon(88% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 88%);
 }

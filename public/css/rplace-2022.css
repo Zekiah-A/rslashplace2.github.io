@@ -499,3 +499,7 @@ r-spoiler[hidden]:hover {
 	opacity: 0.8;
 	color: black;
 }
+
+r-place-chat-message {
+	border-radius: 8px;;
+}

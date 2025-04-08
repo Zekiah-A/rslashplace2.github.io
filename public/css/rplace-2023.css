@@ -403,3 +403,12 @@ placechat {
 #placeChatButtonImage {
 	width: 48px;
 }
+
+r-place-chat-message .container {
+	border: var(--pixel-border);
+}
+
+r-place-chat-message .arrow {
+	border-right: var(--pixel-border);
+	border-bottom: var(--pixel-border);
+}
