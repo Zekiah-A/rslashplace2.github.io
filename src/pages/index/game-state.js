@@ -65,6 +65,7 @@ export let COOLDOWN = DEFAULT_COOLDOWN;
 /**@type {string|null}*/export let chatName = null;
 /**@type {"initial"|"connecting"|"connected"|"disconnected"}*/export let connectStatus = "initial";
 /**@type {boolean}*/export let canvasLocked = false;
+/**@type {"not-required"|"required"|"completed"|"failed"|"unsupported"}*/export let passkeyAuthState = "not-required";
 /**@type {PLACEMENT_MODE}*/export let placementMode = PLACEMENT_MODE.selectPixel;
 /**@type {Set<number>}*/export const spectators = new Set(); // Spectator int Id
 /**@type {number|null}*/export let spectatingIntId = null;
@@ -374,6 +375,12 @@ addIpcMessageHandler("handleChallenge", async (/**@type {[string,string]}*/[sour
 		.constructor(source)(input);
 	sendIpcMessage(wsCapsule, "sendChallengeResult", result);
 });
+addIpcMessageHandler("handlePasskeyAuthRequired", () => {
+	setPasskeyAuthState("required");
+});
+addIpcMessageHandler("handlePasskeyAuthSuccess", () => {
+	setPasskeyAuthState("completed");
+});
 addIpcMessageHandler("handleSpectating", (/**@type {number}*/userIntId) => {
 	spectatingIntId = userIntId;
 
@@ -454,6 +461,19 @@ export function sendServerMessage(name, args=undefined, event=undefined) {
  */
 export async function makeServerRequest(call, args=undefined) {
 	return await makeIpcRequest(wsCapsule, call, args);
+}
+
+/**
+ * @param {"not-required"|"required"|"completed"|"failed"|"unsupported"} state
+ * @param {string} [message]
+ */
+export function setPasskeyAuthState(state, message = "") {
+	passkeyAuthState = state;
+	window.dispatchEvent(new CustomEvent("passkeyauthstate", {
+		detail: { state, message },
+		bubbles: true,
+		composed: true
+	}));
 }
 
 export async function fetchBoard() {

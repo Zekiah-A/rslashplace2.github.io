@@ -11,8 +11,9 @@ import { addIpcMessageHandler, handleIpcMessage, sendIpcMessage, makeIpcRequest 
 import { openOverlayMenu } from "./overlay-menu.js";
 import { TurnstileWidget } from "../../services/turnstile-manager.js";
 import { theme } from "./game-themes.js";
-import { BOARD, canvasLocked, CHANGES, chatName, connectStatus, COOLDOWN, cooldownEndDate, HEIGHT, intId, intIdNames, intIdPositions, onCooldown, PALETTE, PALETTE_USABLE_REGION, placementMode, RAW_BOARD, setCooldown, SOCKET_PIXELS, WIDTH, sendServerMessage, makeServerRequest, connect } from "./game-state.js";
+import { BOARD, canvasLocked, CHANGES, chatName, connectStatus, COOLDOWN, cooldownEndDate, HEIGHT, intId, intIdNames, intIdPositions, onCooldown, PALETTE, PALETTE_USABLE_REGION, passkeyAuthState, placementMode, RAW_BOARD, setCooldown, setPasskeyAuthState, SOCKET_PIXELS, WIDTH, sendServerMessage, makeServerRequest, connect } from "./game-state.js";
 import { generateIndicators, generatePalette, hideIndicators, showPalette } from "./palette.js";
+import { authenticatePasskey, getPasskeyStatus, registerPasskey, supportsPasskeys } from "./passkeys.js";
 import "./popup.js";
 
 import FingerprintJS from "@fingerprintjs/fingerprintjs";
@@ -100,6 +101,10 @@ const chatMessages = /**@type {HTMLElement}*/($("#chatMessages"));
 const chatPreviousButton = /**@type {HTMLButtonElement}*/($("#chatPreviousButton"));
 const captchaOptions = /**@type {HTMLElement}*/($("#captchaOptions"));
 const turnstileMenu = /**@type {HTMLElement}*/($("#turnstileMenu"));
+const passkeyMenu = /**@type {HTMLElement}*/($("#passkeyMenu"));
+const passkeyMenuTitle = /**@type {HTMLElement}*/($("#passkeyMenuTitle"));
+const passkeyMenuMessage = /**@type {HTMLElement}*/($("#passkeyMenuMessage"));
+const passkeyMenuButton = /**@type {HTMLButtonElement}*/($("#passkeyMenuButton"));
 const messageInput = /**@type {HTMLInputElement}*/($("#messageInput"));
 const messageTypePanel = /**@type {HTMLElement}*/($("#messageTypePanel"));
 const messageInputGifPanel = /**@type {import("../../shared-elements.js").GifPanel}*/($("#messageInputGifPanel"));
@@ -167,6 +172,125 @@ const secretSettingsDialog = /**@type {HTMLDialogElement}*/($("#secretSettingsDi
 // View state
 /**@type {TurnstileWidget|null}*/let currentTurnstileWidget = null;
 /**@type {{ x: number, y: number, z: number }|null}*/let spectateStartState = null;
+/**@type {boolean}*/let passkeyAuthBusy = false;
+
+function getHttpServerUrl() {
+	return (localStorage.server || DEFAULT_SERVER)
+		.replace("wss://", "https://").replace("ws://", "http://");
+}
+
+function updatePasskeyMenu(message = "") {
+	if (passkeyAuthState === "completed" || passkeyAuthState === "not-required") {
+		passkeyMenu.removeAttribute("open");
+		passkeyAuthBusy = false;
+		passkeyMenuButton.disabled = false;
+		return;
+	}
+
+	passkeyMenu.setAttribute("open", "true");
+	passkeyMenuButton.disabled = passkeyAuthBusy || passkeyAuthState === "unsupported";
+
+	if (passkeyAuthBusy) {
+		passkeyMenuTitle.textContent = "Passkey in progress";
+		passkeyMenuMessage.textContent = "Follow your browser's passkey prompt to continue.";
+		passkeyMenuButton.textContent = "Waiting...";
+	}
+	else if (passkeyAuthState === "unsupported") {
+		passkeyMenuTitle.textContent = "Passkeys unavailable";
+		passkeyMenuMessage.textContent = message || "This browser or page cannot use passkeys. You can still spectate, but placing and chat are unavailable here.";
+		passkeyMenuButton.textContent = "Unavailable";
+	}
+	else if (passkeyAuthState === "failed") {
+		passkeyMenuTitle.textContent = "Passkey failed";
+		passkeyMenuMessage.textContent = message || "Passkey authentication did not complete. You can try again.";
+		passkeyMenuButton.textContent = "Try again";
+	}
+	else {
+		passkeyMenuTitle.textContent = "Passkey required";
+		passkeyMenuMessage.textContent = message || "Use a passkey to place pixels and send chat messages.";
+		passkeyMenuButton.textContent = "Continue";
+	}
+}
+
+async function refreshPasskeyStatus() {
+	try {
+		const status = await getPasskeyStatus(getHttpServerUrl());
+		if (status.authenticated) {
+			setPasskeyAuthState("completed");
+		}
+		else if (status.required) {
+			setPasskeyAuthState("required");
+		}
+		else {
+			setPasskeyAuthState("not-required");
+		}
+	}
+	catch {
+		// Older or non-passkey servers should behave as they did before.
+		setPasskeyAuthState("not-required");
+	}
+}
+
+async function startPasskeyAuth() {
+	if (passkeyAuthBusy || passkeyAuthState === "completed" || passkeyAuthState === "unsupported") {
+		return;
+	}
+
+	if (!supportsPasskeys()) {
+		setPasskeyAuthState("unsupported", "This browser or page cannot use passkeys. Try a secure browser session on a passkey-capable device.");
+		return;
+	}
+
+	passkeyAuthBusy = true;
+	updatePasskeyMenu();
+
+	try {
+		const serverUrl = getHttpServerUrl();
+		const status = await getPasskeyStatus(serverUrl);
+		if (!status.required || status.authenticated) {
+			setPasskeyAuthState(status.authenticated ? "completed" : "not-required");
+			return;
+		}
+
+		if (status.hasCredentials) {
+			await authenticatePasskey(serverUrl);
+		}
+		else {
+			await registerPasskey(serverUrl);
+		}
+		await refreshPasskeyStatus();
+	}
+	catch (error) {
+		const message = error instanceof Error ? error.message : "Passkey authentication did not complete.";
+		setPasskeyAuthState("failed", message);
+	}
+	finally {
+		passkeyAuthBusy = false;
+		updatePasskeyMenu();
+	}
+}
+
+function passkeyReadyForActions() {
+	return passkeyAuthState === "not-required" || passkeyAuthState === "completed";
+}
+
+function requirePasskeyForAction() {
+	if (passkeyReadyForActions()) {
+		return true;
+	}
+	updatePasskeyMenu();
+	if (passkeyAuthState === "required" || passkeyAuthState === "failed") {
+		startPasskeyAuth();
+	}
+	return false;
+}
+
+passkeyMenuButton.addEventListener("click", (e) => {
+	if (!(e instanceof Event) || !e.isTrusted) {
+		return;
+	}
+	startPasskeyAuth();
+});
 
 window.addEventListener("palette", (/**@type {Event}*/e) => {
 	generatePalette();
@@ -231,6 +355,16 @@ window.addEventListener("canvaslocked", (/**@type {Event}*/e) => {
 		// TODO: This is a UX nightmare in dire need of a more elegant solution
 		alert(reason);
 	}
+});
+window.addEventListener("passkeyauthstate", (/**@type {Event}*/e) => {
+	if (!(e instanceof CustomEvent)) {
+		throw new Error("Window event was not of type CustomEvent");
+	}
+	updatePasskeyMenu(e.detail.message);
+	updatePlaceButton();
+});
+window.addEventListener("intid", () => {
+	refreshPasskeyStatus();
 });
 window.addEventListener("pixels", (/**@type {Event}*/e) => {
 	if (!(e instanceof CustomEvent)) {
@@ -936,6 +1070,9 @@ function handlePixelPlace(e) {
 	if (!placeOkButton.classList.contains("enabled")) {
 		return;
 	}
+	if (!requirePasskeyForAction()) {
+		return;
+	}
 	// Send place to websocket
 	const position = Math.floor(x) + Math.floor(y) * WIDTH;
 	sendServerMessage("putPixel", { position, colour: selectedColour }, e);
@@ -971,6 +1108,9 @@ function handlePlaceButtonClicked(e) {
 	}
 
 	if (connectStatus === "connected" && (cooldownEndDate !== null && cooldownEndDate < Date.now())) {
+		if (!requirePasskeyForAction()) {
+			return;
+		}
 		zoomIn()
 		showPalette()
 
@@ -1032,7 +1172,11 @@ async function updatePlaceButton() {
 		const left = endDate - now;
 		const leftS = Math.floor(left / 1000);
 
-		if (left > 0) {
+		if (!passkeyReadyForActions()) {
+			innerHTML = "Authenticate";
+			clearCooldownInterval();
+		}
+		else if (left > 0) {
 			if (leftS >= 1) {
 				const h = String(Math.floor(leftS / 3600)).padStart(2, "0");
 				const m = String(Math.floor((leftS / 60) % 60)).padStart(2, "0");
@@ -1056,7 +1200,7 @@ async function updatePlaceButton() {
 	}
 
 	placeButton.innerHTML = innerHTML;
-	placeButton.disabled = onCooldown;
+	placeButton.disabled = onCooldown && passkeyReadyForActions();
 }
 
 /**
@@ -1643,16 +1787,19 @@ messageInput.addEventListener("keydown", function(/**@type {KeyboardEvent}*/ e) 
 
 	openChatPanel();
 	if (e.key == "Enter" && !e.shiftKey) {
+		let sent = false;
 		// ctrl + enter send as place chat, enter send as normal live chat
 		if (e.ctrlKey) {
-			sendPlaceChatMsg(messageInput.value, e);
+			sent = sendPlaceChatMsg(messageInput.value, e);
 		}
 		else {
-			sendLiveChatMsg(messageInput.value, e);
+			sent = sendLiveChatMsg(messageInput.value, e);
 		}
 		e.preventDefault()
-		messageInput.value = ""
-		updateMessageInputHeight()
+		if (sent) {
+			messageInput.value = ""
+			updateMessageInputHeight()
+		}
 	}
 });
 messageInput.addEventListener("focus", openChatPanel);
@@ -1686,16 +1833,18 @@ messageTypePanel.children[0].addEventListener("click", function (/**@type {Event
 		return;
 	}
 
-	sendPlaceChatMsg(messageInput.value);
-	messageInput.value = "";
+	if (sendPlaceChatMsg(messageInput.value, e)) {
+		messageInput.value = "";
+	}
 });
 messageTypePanel.children[1].addEventListener("click", function(/**@type {Event}*/e) {
 	if (!e.isTrusted) {
 		return;
 	}
 
-	sendLiveChatMsg(messageInput.value);
-	messageInput.value = "";
+	if (sendLiveChatMsg(messageInput.value, e)) {
+		messageInput.value = "";
+	}
 });
 
 messageInputGifPanel.addEventListener("gifselection", function(/**@type {Event}*/e) {
@@ -1717,37 +1866,45 @@ messageInputGifPanel.addEventListener("close", function(e) {
 
 /**
  * @param {string} message 
- * @param {Event} e
+ * @param {Event} [e]
  */
 function sendPlaceChatMsg(message, e) {
+	if (!requirePasskeyForAction()) {
+		return false;
+	}
 	const position = Math.floor(y) * WIDTH + Math.floor(x);
 	sendServerMessage("sendPlaceChatMsg", { message, position }, e);
+	return true;
 }
 
 /**
  * @param {string} message 
- * @param {Event} e
+ * @param {Event} [e]
  * @param {string} channel 
  * @param {number|null} replyId 
  * @returns 
  */
 function sendLiveChatMsg(message, e, channel=currentChannel, replyId=currentReplyId) {
+	if (!requirePasskeyForAction()) {
+		return false;
+	}
 	// Execute live chat commands
 	for (const [command] of COMMANDS) {
 		if (message.startsWith(":" + command)) {
 			handleLiveChatCommand(command, message);
-			return;
+			return true;
 		}
 	}
 
 	// VIP key leak detection
 	if (localStorage.vip && message.includes(localStorage.vip)) {
 		alert("Can't send VIP key in chat. Use ':vip yourvipkeyhere' to apply a VIP key");
-		return;
+		return false;
 	}
 
 	sendServerMessage("sendLiveChatMsg", { message, channel, replyId }, e);
 	chatCancelReplies();
+	return true;
 }
 
 /**
