@@ -1,6 +1,7 @@
 "use strict";
 import { DEFAULT_BOARD, DEFAULT_BOARD_FALLBACK, DEFAULT_COOLDOWN, DEFAULT_HEIGHT, DEFAULT_PALETTE, DEFAULT_PALETTE_USABLE_REGION, DEFAULT_SERVER, DEFAULT_WIDTH, PLACEMENT_MODE, RENDERER_TYPE } from "../../defaults";
 import { addIpcMessageHandler, handleIpcMessage, makeIpcRequest, sendIpcMessage } from "shared-ipc";
+import { createGameIpc } from "./game-ipc.js";
 
 // Types
 /**
@@ -82,7 +83,8 @@ export let COOLDOWN = DEFAULT_COOLDOWN;
 /**@type {Timer|null}*/let fetchFailTimeout = null;
 
 // WsCapsule logic & wscapsule message handlers
-const httpServerUrl = (localStorage.server || DEFAULT_SERVER)
+const selectedServer = localStorage.server || DEFAULT_SERVER;
+const httpServerUrl = selectedServer
 	.replace("wss://", "https://").replace("ws://", "http://");
 // TODO: Find a better cache invalidation strategy for game worker
 const res = await fetch(`${httpServerUrl}/public/game-worker.js?v=${Date.now()}`);
@@ -92,10 +94,16 @@ const url = URL.createObjectURL(blob);
 const wsCapsule = new Worker(url, {
 	type: "module"
 });
+const gameIpc = await createGameIpc(
+	wsCapsule,
+	selectedServer,
+	DEFAULT_SERVER
+);
 wsCapsule.addEventListener("message", handleIpcMessage);
 window.addEventListener("beforeunload", (e) => {
 	console.log("Stopping wsCapsule...")
 	sendIpcMessage(wsCapsule, "stop");
+	gameIpc.dispose();
 });
 // Undefine global objects
 const undefineGlobals = new CustomEvent("undefineglobals");
@@ -244,7 +252,7 @@ addIpcMessageHandler("handlePlacerInfoRegion", (/**@type {[number,number,Number,
 addIpcMessageHandler("handleSetIntId", (/**@type {number}*/userIntId) => {
 	intId = userIntId;
 	if (automatedActivityFlags !== 0) {
-		sendIpcMessage(wsCapsule, "informAutomatedActivity", [
+		gameIpc.reportAutomatedActivity([
 			automatedActivityFlags,
 			window.outerWidth,
 			window.innerWidth,
@@ -411,6 +419,7 @@ addIpcMessageHandler("handleDisconnect", (/**@type {[number, string]}*/[code, re
 	localStorage.lastDisconnect = Date.now();
 	connectStatus = "disconnected";
 	setCooldown(null);
+	gameIpc.dispose();
 	wsCapsule.terminate();
 
 	const disconnectEvent = new CustomEvent("disconnect", {

@@ -1,0 +1,118 @@
+import { createStrictIpcEndpoint, sendIpcMessage } from "shared-ipc";
+
+/** @typedef {[number, number, number, number, number]} ClientActivity */
+/** @typedef {{ reportAutomatedActivity: (activity: ClientActivity) => void, dispose: () => void }} GameIpc */
+
+/** @param {*} activity */
+function isClientActivity(activity) {
+	if (!Array.isArray(activity) || activity.length !== 5) {
+		return false;
+	}
+	const [flags, ...dimensions] = activity;
+	return Number.isInteger(flags) && flags >= 1 && flags <= 31 &&
+		dimensions.every(value => Number.isInteger(value) && value >= 0 && value <= 1_000_000);
+}
+
+function createChannelId() {
+	const bytes = crypto.getRandomValues(new Uint8Array(16));
+	return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * The official origin is strict-required. A different origin can only come
+ * from the existing explicit custom-server selection.
+ * @param {string} server
+ * @param {string} officialServer
+ * @returns {"strict"|"legacy"}
+ */
+export function selectGameIpcMode(server, officialServer) {
+	try {
+		return new URL(server).origin === new URL(officialServer).origin ? "strict" : "legacy";
+	}
+	catch {
+		return "legacy";
+	}
+}
+
+/**
+ * @param {{ postMessage: Function, terminate: Function }} worker
+ * @param {string} server
+ * @param {string} officialServer
+ * @param {number} [bootstrapTimeoutMs]
+ * @returns {Promise<GameIpc>}
+ */
+export async function createGameIpc(worker, server, officialServer, bootstrapTimeoutMs = 5_000) {
+	const mode = selectGameIpcMode(server, officialServer);
+	if (mode === "legacy") {
+		return Object.freeze({
+			/** @param {ClientActivity} activity */
+			reportAutomatedActivity(activity) {
+				if (!isClientActivity(activity)) {
+					throw new TypeError("Invalid client activity");
+				}
+				sendIpcMessage(/** @type {Worker} */(worker), "informAutomatedActivity", activity);
+			},
+			dispose() {}
+		});
+	}
+	if (!Number.isSafeInteger(bootstrapTimeoutMs) || bootstrapTimeoutMs <= 0) {
+		throw new TypeError("Invalid game IPC configuration");
+	}
+
+	const channel = new MessageChannel();
+	const channelId = createChannelId();
+	/** @type {(() => void)|undefined} */
+	let markReady;
+	/** @type {Promise<void>} */
+	const readyPromise = new Promise(resolve => { markReady = resolve; });
+	/** @type {Map<number, import("shared-ipc").StrictIncomingCommand>} */
+	const incoming = new Map([[0, {
+		kind: "message",
+		validate: value => value === undefined,
+		handler: () => {
+			markReady?.();
+			markReady = undefined;
+		}
+	}]]);
+	/** @type {Map<number, import("shared-ipc").StrictOutgoingCommand>} */
+	const outgoing = new Map([[0, {
+		kind: "message",
+		validate: isClientActivity
+	}]]);
+	const endpoint = createStrictIpcEndpoint(channel.port1, {
+		channelId,
+		incoming,
+		outgoing
+	});
+	incoming.clear();
+	outgoing.clear();
+
+	let timeout;
+	try {
+		worker.postMessage([1, channelId], [channel.port2]);
+		await Promise.race([
+			readyPromise,
+			new Promise((_, reject) => {
+				timeout = setTimeout(reject, bootstrapTimeoutMs);
+			})
+		]);
+	}
+	catch {
+		endpoint.dispose("Game IPC bootstrap failed");
+		worker.terminate();
+		throw new Error("Game IPC bootstrap failed");
+	}
+	finally {
+		clearTimeout(timeout);
+	}
+
+	return Object.freeze({
+		/** @param {ClientActivity} activity */
+		reportAutomatedActivity(activity) {
+			endpoint.send(0, activity);
+		},
+		dispose() {
+			endpoint.dispose();
+		}
+	});
+}
