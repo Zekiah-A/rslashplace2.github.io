@@ -100,29 +100,18 @@ window.addEventListener("beforeunload", (e) => {
 // Undefine global objects
 const undefineGlobals = new CustomEvent("undefineglobals");
 window.dispatchEvent(undefineGlobals);
-const automated = !!(
-	window.navigator.webdriver ||
+// Weak client telemetry flags: webdriver, extension API, zero-height window, no plugins, headless UA.
+const automatedActivityFlags =
+	(window.navigator.webdriver ? 1 : 0) |
 	// @ts-ignore Browser specifics
-	window.chrome?.runtime?.onConnect ||
-	window.outerHeight === 0 ||
+	(window.chrome?.runtime?.onConnect ? 2 : 0) |
+	(window.outerHeight === 0 ? 4 : 0) |
 	// @ts-ignore Browser specifics
-	navigator?.plugins?.length === 0 ||
-	/HeadlessChrome/.test(navigator.userAgent)
-);
+	(navigator?.plugins?.length === 0 ? 8 : 0) |
+	(/HeadlessChrome/.test(navigator.userAgent) ? 16 : 0);
 
 addIpcMessageHandler("handleConnect", () => {
 	connectStatus = "connected";
-	if (automated) {
-		// TODO: Flesh out and make more internal to wscapsule
-		const activityObj = {
-			windowOuterWidth: window.outerWidth,
-			windowInnerWidth: window.innerWidth,
-			windowOuterHeight: window.outerHeight,
-			windowInnerHeight: window.innerHeight,
-			localStorage: { ...localStorage }
-		};
-		sendIpcMessage(wsCapsule, "informAutomatedActivity", activityObj);
-	}
 });
 addIpcMessageHandler("handlePalette", (/**@type {[number[],number,number]}*/[palette, start, end]) => {
 	PALETTE = palette;
@@ -254,6 +243,15 @@ addIpcMessageHandler("handlePlacerInfoRegion", (/**@type {[number,number,Number,
 });
 addIpcMessageHandler("handleSetIntId", (/**@type {number}*/userIntId) => {
 	intId = userIntId;
+	if (automatedActivityFlags !== 0) {
+		sendIpcMessage(wsCapsule, "informAutomatedActivity", [
+			automatedActivityFlags,
+			window.outerWidth,
+			window.innerWidth,
+			window.outerHeight,
+			window.innerHeight
+		]);
+	}
 
 	const intIdEvent = new CustomEvent("intid", {
 		detail: { intId },
