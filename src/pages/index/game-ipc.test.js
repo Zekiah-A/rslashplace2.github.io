@@ -91,8 +91,10 @@ describe("page game IPC adapter", () => {
 			"requestChatHistory",
 			"sendCaptchaResult",
 			"sendChallengeResult",
+			"sendHCaptchaResult",
 			"sendLiveChat",
 			"sendPlaceChat",
+			"sendTurnstileResult",
 			"setName",
 			"spectateUser",
 			"stop",
@@ -1196,6 +1198,57 @@ describe("page game IPC adapter", () => {
 		await tick();
 		expect(challenges).toHaveLength(1);
 		expect(sent).toEqual([1n]);
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
+
+	test("correlates strict Turnstile and hCaptcha independently", async () => {
+		let workerEndpoint;
+		const results = [];
+		const events = [];
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
+					incoming: new Map([
+						[2, { kind: "message", validate: () => true, handler: () => workerEndpoint.send(1) }],
+						[14, { kind: "message", validate: () => true, handler: value => results.push(["turnstile", value]) }],
+						[15, { kind: "message", validate: () => true, handler: value => results.push(["hcaptcha", value]) }]
+					]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }],
+						[30, { kind: "message", validate: () => true }],
+						[31, { kind: "message", validate: () => true }],
+						[32, { kind: "message", validate: () => true }],
+						[33, { kind: "message", validate: () => true }]
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() { throw new Error("strict external CAPTCHA unexpectedly terminated"); }
+		};
+		const handlers = Array.from({ length: 33 }, () => () => undefined);
+		for (let i = 29; i < 33; i++) handlers[i] = value => events.push([i, value]);
+		const ipc = await createGameIpc(
+			worker, "wss://server.rplace.live", "wss://server.rplace.live", 100, handlers
+		);
+		ipc.connect("device", null);
+		await tick();
+		workerEndpoint.send(30, [7, "turn-key"]);
+		workerEndpoint.send(32, [8, "h-key"]);
+		await tick();
+		ipc.sendTurnstileResult(7, "turn-token");
+		expect(() => ipc.sendTurnstileResult(7, "replay")).toThrow();
+		ipc.sendHCaptchaResult(8, "h-token");
+		await tick();
+		workerEndpoint.send(31);
+		workerEndpoint.send(33);
+		await tick();
+		expect(results).toEqual([
+			["turnstile", [7, "turn-token"]],
+			["hcaptcha", [8, "h-token"]]
+		]);
+		expect(events).toHaveLength(4);
 		ipc.dispose();
 		workerEndpoint.dispose();
 	});

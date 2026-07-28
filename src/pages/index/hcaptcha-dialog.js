@@ -29,7 +29,7 @@ hCaptchaSubmitButton.addEventListener("click", (e) => {
 //	hCaptchaLoad.resolve(undefined);
 //}
 
-addIpcMessageHandler("handleHCaptcha", async (/**@type {[number,string]}*/[captchaId, siteKey]) => {
+async function handleHCaptcha(/**@type {[number,string]}*/[captchaId, siteKey]) {
 	//await hCaptchaLoad.promise;
 	const siteVariant = document.documentElement.dataset.variant;
 	const captchaTheme = siteVariant === "dark" ? "dark" : "light";
@@ -56,7 +56,11 @@ addIpcMessageHandler("handleHCaptcha", async (/**@type {[number,string]}*/[captc
 	});
 
 	hCaptchaMenu.setAttribute("open", "true");
-});
-addIpcMessageHandler("handleHCaptchaSuccess", () => {
+}
+addIpcMessageHandler("handleHCaptcha", handleHCaptcha);
+function handleHCaptchaSuccess() {
 	hCaptchaMenu.removeAttribute("open");
-});
+}
+addIpcMessageHandler("handleHCaptchaSuccess", handleHCaptchaSuccess);
+window.addEventListener("hcaptchachallenge", event => { void handleHCaptcha(event.detail); });
+window.addEventListener("hcaptchasuccess", handleHCaptchaSuccess);

@@ -3,7 +3,7 @@ import { createStrictIpcEndpoint, sendIpcMessage } from "shared-ipc";
 /** @typedef {[number, number, number, number, number]} ClientActivity */
 /** @typedef {[string, string, string|null]} ConnectArgs */
 /** @typedef {[number, string[], Uint8Array]} DefaultCaptchaChallenge */
-/** @typedef {{ chatReact: (messageId: number, reaction: string) => void, chatReport: (messageId: number, reason: string) => void, connect: (device: string, vip: string|null) => void, putPixel: (position: number, colour: number) => void, reportAutomatedActivity: (activity: ClientActivity) => void, requestChatHistory: (channel: string, anchorMsgId?: number, msgCount?: number) => void, sendCaptchaResult: (captchaId: number, result: string) => void, sendChallengeResult: (result: bigint) => void, sendLiveChat: (message: string, channel: string, replyId: number|null) => void, sendPlaceChat: (message: string, position: number) => void, setName: (name: string) => void, spectateUser: (userId: number) => void, unspectateUser: () => void, stop: () => void, dispose: () => void }} GameIpc */
+/** @typedef {{ chatReact: (messageId: number, reaction: string) => void, chatReport: (messageId: number, reason: string) => void, connect: (device: string, vip: string|null) => void, putPixel: (position: number, colour: number) => void, reportAutomatedActivity: (activity: ClientActivity) => void, requestChatHistory: (channel: string, anchorMsgId?: number, msgCount?: number) => void, sendCaptchaResult: (captchaId: number, result: string) => void, sendChallengeResult: (result: bigint) => void, sendHCaptchaResult: (captchaId: number, result: string) => void, sendLiveChat: (message: string, channel: string, replyId: number|null) => void, sendPlaceChat: (message: string, position: number) => void, sendTurnstileResult: (captchaId: number, result: string) => void, setName: (name: string) => void, spectateUser: (userId: number) => void, unspectateUser: () => void, stop: () => void, dispose: () => void }} GameIpc */
 const MAX_DATE_MS = 8_640_000_000_000_000;
 const textEncoder = new TextEncoder();
 
@@ -185,6 +185,19 @@ function isChallengeResult(value) {
 		value >= 0n && value <= 0xFFFF_FFFF_FFFF_FFFFn;
 }
 
+function isExternalCaptchaChallenge(value) {
+	return Array.isArray(value) && value.length === 2 &&
+		Number.isInteger(value[0]) && value[0] >= 0 && value[0] <= 255 &&
+		typeof value[1] === "string" && value[1].length > 0;
+}
+
+function isExternalCaptchaResult(value) {
+	return Array.isArray(value) && value.length === 2 &&
+		Number.isInteger(value[0]) && value[0] >= 0 && value[0] <= 255 &&
+		typeof value[1] === "string" && value[1].length > 0 &&
+		textEncoder.encode(value[1]).byteLength <= 65_533;
+}
+
 function isTimestamp(value) {
 	return Number.isSafeInteger(value) && value >= 0 && value <= MAX_DATE_MS;
 }
@@ -305,6 +318,10 @@ export async function createGameIpc(
 		() => undefined,
 		() => undefined,
 		() => undefined,
+		() => undefined,
+		() => undefined,
+		() => undefined,
+		() => undefined,
 		() => undefined
 	]
 ) {
@@ -357,6 +374,20 @@ export async function createGameIpc(
 				if (disposed) throw new Error("Game IPC endpoint is closed");
 				if (!isChallengeResult(result)) throw new TypeError("Invalid challenge result");
 				sendIpcMessage(/** @type {Worker} */(worker), "sendChallengeResult", result);
+			},
+			sendTurnstileResult(captchaId, result) {
+				if (disposed) throw new Error("Game IPC endpoint is closed");
+				const value = [captchaId, result];
+				if (!isExternalCaptchaResult(value)) throw new TypeError("Invalid Turnstile result");
+				sendIpcMessage(/** @type {Worker} */(worker), "sendTurnstileResult",
+					{ captchaId, result });
+			},
+			sendHCaptchaResult(captchaId, result) {
+				if (disposed) throw new Error("Game IPC endpoint is closed");
+				const value = [captchaId, result];
+				if (!isExternalCaptchaResult(value)) throw new TypeError("Invalid hCaptcha result");
+				sendIpcMessage(/** @type {Worker} */(worker), "sendHCaptchaResult",
+					{ captchaId, result });
 			},
 			putPixel(position, colour) {
 				if (disposed) {
@@ -458,6 +489,8 @@ export async function createGameIpc(
 	const spectators = new Set();
 	const pendingChatHistories = new Map();
 	let challengePending = false;
+	let turnstile = null;
+	let hcaptcha = null;
 	/** @type {ReturnType<typeof createStrictIpcEndpoint>|undefined} */
 	let endpoint;
 	/** @type {(() => void)|undefined} */
@@ -647,6 +680,38 @@ export async function createGameIpc(
 			challengePending = true;
 			eventHandlers[28](value);
 		}
+	}], [30, {
+		kind: "message",
+		validate: value => connectionState === 2 && turnstile === null &&
+			isExternalCaptchaChallenge(value),
+		handler: value => {
+			turnstile = { id: value[0], submitted: false };
+			eventHandlers[29](value);
+		}
+	}], [31, {
+		kind: "message",
+		validate: value => connectionState === 2 && value === undefined &&
+			turnstile !== null && turnstile.submitted,
+		handler: () => {
+			turnstile = null;
+			eventHandlers[30]();
+		}
+	}], [32, {
+		kind: "message",
+		validate: value => connectionState === 2 && hcaptcha === null &&
+			isExternalCaptchaChallenge(value),
+		handler: value => {
+			hcaptcha = { id: value[0], submitted: false };
+			eventHandlers[31](value);
+		}
+	}], [33, {
+		kind: "message",
+		validate: value => connectionState === 2 && value === undefined &&
+			hcaptcha !== null && hcaptcha.submitted,
+		handler: () => {
+			hcaptcha = null;
+			eventHandlers[32]();
+		}
 	}]]);
 	/** @type {Map<number, import("shared-ipc").StrictOutgoingCommand>} */
 	const outgoing = new Map([[0, {
@@ -691,6 +756,12 @@ export async function createGameIpc(
 	}], [13, {
 		kind: "message",
 		validate: isChallengeResult
+	}], [14, {
+		kind: "message",
+		validate: isExternalCaptchaResult
+	}], [15, {
+		kind: "message",
+		validate: isExternalCaptchaResult
 	}]]);
 	let timeout;
 	const timeoutPromise = new Promise((_, reject) => {
@@ -894,6 +965,28 @@ export async function createGameIpc(
 			}
 			challengePending = false;
 			endpoint.send(13, result);
+		},
+		sendTurnstileResult(captchaId, result) {
+			if (disposed) throw new Error("Game IPC endpoint is closed");
+			const value = [captchaId, result];
+			if (connectionState !== 2 || turnstile === null ||
+				turnstile.submitted || captchaId !== turnstile.id ||
+				!isExternalCaptchaResult(value)) {
+				throw new Error("Turnstile result is not valid");
+			}
+			turnstile.submitted = true;
+			endpoint.send(14, value);
+		},
+		sendHCaptchaResult(captchaId, result) {
+			if (disposed) throw new Error("Game IPC endpoint is closed");
+			const value = [captchaId, result];
+			if (connectionState !== 2 || hcaptcha === null ||
+				hcaptcha.submitted || captchaId !== hcaptcha.id ||
+				!isExternalCaptchaResult(value)) {
+				throw new Error("hCaptcha result is not valid");
+			}
+			hcaptcha.submitted = true;
+			endpoint.send(15, value);
 		},
 		stop() {
 			if (disposed) {

@@ -594,7 +594,7 @@ function handleCaptchaSuccess() {
 }
 addIpcMessageHandler("handleCaptchaSuccess", handleCaptchaSuccess);
 setDefaultCaptchaHandlers(handleTextCaptcha, handleEmojiCaptcha, handleCaptchaSuccess);
-addIpcMessageHandler("handleTurnstile", /**@type {[number,string]}*/([captchaId, siteKey]) => {
+function handleTurnstile(/**@type {[number,string]}*/[captchaId, siteKey]) {
 	const siteVariant = document.documentElement.dataset.variant;
 	const turnstileTheme = siteVariant === "dark" ? "dark" : "light";
 	turnstileMenu.setAttribute("open", "true");
@@ -619,10 +619,14 @@ addIpcMessageHandler("handleTurnstile", /**@type {[number,string]}*/([captchaId,
 			console.log("Turnstile loaded successfully");
 		}
 	});
-});
-addIpcMessageHandler("handleTurnstileSuccess", () => {
+}
+addIpcMessageHandler("handleTurnstile", handleTurnstile);
+function handleTurnstileSuccess() {
 	turnstileMenu.removeAttribute("open")
-});
+}
+addIpcMessageHandler("handleTurnstileSuccess", handleTurnstileSuccess);
+window.addEventListener("turnstilechallenge", event => handleTurnstile(event.detail));
+window.addEventListener("turnstilesuccess", handleTurnstileSuccess);
 window.addEventListener("punishment", (/**@type {Event}*/e) => {
 	if (!(e instanceof CustomEvent)) {
 		throw new Error("Window event was not of type CustomEvent");

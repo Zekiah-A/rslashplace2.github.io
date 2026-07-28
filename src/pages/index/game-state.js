@@ -129,7 +129,11 @@ const gameIpc = await createGameIpc(
 		handlePlaceChat,
 		handlePunishment,
 		handleChatHistory,
-		handleChallenge
+		handleChallenge,
+		value => dispatchSecurityEvent("turnstilechallenge", value),
+		() => dispatchSecurityEvent("turnstilesuccess"),
+		value => dispatchSecurityEvent("hcaptchachallenge", value),
+		() => dispatchSecurityEvent("hcaptchasuccess")
 	]
 );
 wsCapsule.addEventListener("message", handleIpcMessage);
@@ -508,6 +512,9 @@ async function handleChallenge(/**@type {[string,Uint8Array]}*/[source, input]) 
 	gameIpc.sendChallengeResult(result);
 }
 addIpcMessageHandler("handleChallenge", value => { void handleChallenge(value); });
+function dispatchSecurityEvent(name, detail=undefined) {
+	window.dispatchEvent(new CustomEvent(name, { detail }));
+}
 function handleStrictPasskeyRequired() {
 	setPasskeyAuthState("required");
 }
@@ -619,6 +626,14 @@ export function sendServerMessage(name, args=undefined, event=undefined) {
 	}
 	if (name === "requestLoadChannelPrevious") {
 		gameIpc.requestChatHistory(args.channel, args.anchorMsgId, args.msgCount);
+		return;
+	}
+	if (name === "sendTurnstileResult") {
+		gameIpc.sendTurnstileResult(args.captchaId, args.result);
+		return;
+	}
+	if (name === "sendHCaptchaResult") {
+		gameIpc.sendHCaptchaResult(args.captchaId, args.result);
 		return;
 	}
 	sendIpcMessage(wsCapsule, name, args);
