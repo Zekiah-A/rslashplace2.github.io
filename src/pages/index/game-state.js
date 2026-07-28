@@ -532,6 +532,10 @@ export function sendServerMessage(name, args=undefined, event=undefined) {
 		gameIpc.unspectateUser();
 		return;
 	}
+	if (name === "setName") {
+		gameIpc.setName(args);
+		return;
+	}
 	sendIpcMessage(wsCapsule, name, args);
 }
 

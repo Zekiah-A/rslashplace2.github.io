@@ -3,7 +3,7 @@ import { createStrictIpcEndpoint, sendIpcMessage } from "shared-ipc";
 /** @typedef {[number, number, number, number, number]} ClientActivity */
 /** @typedef {[string, string, string|null]} ConnectArgs */
 /** @typedef {[number, string[], Uint8Array]} DefaultCaptchaChallenge */
-/** @typedef {{ connect: (device: string, vip: string|null) => void, putPixel: (position: number, colour: number) => void, reportAutomatedActivity: (activity: ClientActivity) => void, sendCaptchaResult: (captchaId: number, result: string) => void, spectateUser: (userId: number) => void, unspectateUser: () => void, stop: () => void, dispose: () => void }} GameIpc */
+/** @typedef {{ connect: (device: string, vip: string|null) => void, putPixel: (position: number, colour: number) => void, reportAutomatedActivity: (activity: ClientActivity) => void, sendCaptchaResult: (captchaId: number, result: string) => void, setName: (name: string) => void, spectateUser: (userId: number) => void, unspectateUser: () => void, stop: () => void, dispose: () => void }} GameIpc */
 const MAX_DATE_MS = 8_640_000_000_000_000;
 
 /** @param {*} activity */
@@ -84,6 +84,10 @@ function isNameEntries(value) {
 		Array.isArray(entry) && entry.length === 2 &&
 		isUint32(entry[0]) && typeof entry[1] === "string" &&
 		entry[1].length <= 255);
+}
+
+function isNameRequest(value) {
+	return typeof value === "string" && value.length <= 16;
 }
 
 function isTimestamp(value) {
@@ -263,6 +267,16 @@ export async function createGameIpc(
 					throw new Error("Game IPC endpoint is closed");
 				}
 				sendIpcMessage(/** @type {Worker} */(worker), "unspectateUser");
+			},
+			/** @param {string} name */
+			setName(name) {
+				if (disposed) {
+					throw new Error("Game IPC endpoint is closed");
+				}
+				if (!isNameRequest(name)) {
+					throw new TypeError("Invalid chat name");
+				}
+				sendIpcMessage(/** @type {Worker} */(worker), "setName", name);
 			},
 			stop() {
 				if (disposed) {
@@ -468,6 +482,9 @@ export async function createGameIpc(
 	}], [6, {
 		kind: "message",
 		validate: value => value === undefined
+	}], [7, {
+		kind: "message",
+		validate: isNameRequest
 	}]]);
 	let timeout;
 	const timeoutPromise = new Promise((_, reject) => {
@@ -608,6 +625,16 @@ export async function createGameIpc(
 				throw new Error("Game IPC is not spectating");
 			}
 			endpoint.send(6);
+		},
+		/** @param {string} name */
+		setName(name) {
+			if (disposed) {
+				throw new Error("Game IPC endpoint is closed");
+			}
+			if (connectionState !== 2 || !isNameRequest(name)) {
+				throw new Error("Chat name is not valid");
+			}
+			endpoint.send(7, name);
 		},
 		stop() {
 			if (disposed) {

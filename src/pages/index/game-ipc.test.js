@@ -87,6 +87,7 @@ describe("page game IPC adapter", () => {
 			"putPixel",
 			"reportAutomatedActivity",
 			"sendCaptchaResult",
+			"setName",
 			"spectateUser",
 			"stop",
 			"unspectateUser"
@@ -938,6 +939,50 @@ describe("page game IPC adapter", () => {
 		workerEndpoint.send(22, 7);
 		await tick();
 		expect(received).toHaveLength(2);
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
+
+	test("sends bounded strict chat-name updates only while open", async () => {
+		let workerEndpoint;
+		const names = [];
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
+					incoming: new Map([
+						[2, {
+							kind: "message",
+							validate: () => true,
+							handler: () => { workerEndpoint.send(1); }
+						}],
+						[7, {
+							kind: "message",
+							validate: () => true,
+							handler: value => { names.push(value); }
+						}]
+					]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }]
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() {
+				throw new Error("strict name update unexpectedly terminated the worker");
+			}
+		};
+		const ipc = await createGameIpc(
+			worker, "wss://server.rplace.live", "wss://server.rplace.live", 100
+		);
+		expect(() => ipc.setName("name")).toThrow();
+		ipc.connect("device", null);
+		await tick();
+		ipc.setName("");
+		ipc.setName("1234567890123456");
+		expect(() => ipc.setName("12345678901234567")).toThrow();
+		await tick();
+		expect(names).toEqual(["", "1234567890123456"]);
 		ipc.dispose();
 		workerEndpoint.dispose();
 	});
