@@ -257,6 +257,81 @@ describe("page game IPC adapter", () => {
 		workerEndpoint.dispose();
 	});
 
+	test("privately validates strict placement bootstrap and gate state", async () => {
+		let workerEndpoint;
+		const state = [];
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
+					incoming: new Map([[2, {
+						kind: "message",
+						validate: () => true,
+						handler: () => undefined
+					}]]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }],
+						...Array.from({ length: 5 }, (_, index) => [
+							index + 9,
+							{ kind: "message", validate: () => true }
+						])
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() {
+				throw new Error("strict placement state unexpectedly terminated the worker");
+			}
+		};
+		const ipc = await createGameIpc(
+			worker,
+			"wss://server.rplace.live",
+			"wss://server.rplace.live",
+			100,
+			[
+				() => state.push("open"),
+				() => undefined,
+				() => undefined,
+				() => undefined,
+				() => undefined,
+				() => undefined,
+				() => undefined,
+				() => undefined,
+				value => state.push(["palette", value]),
+				value => state.push(["changes", value]),
+				value => state.push(["lock", value]),
+				() => state.push("passkey-required"),
+				() => state.push("passkey-success")
+			]
+		);
+
+		ipc.connect("device", null);
+		await tick();
+		workerEndpoint.send(1);
+		const changes = new Uint8Array([7, 8]).buffer;
+		workerEndpoint.send(9, [[0x0102_0304], 0, 1]);
+		workerEndpoint.send(10, [3, 2, changes]);
+		workerEndpoint.send(11, [true, "maintenance"]);
+		workerEndpoint.send(12);
+		workerEndpoint.send(13);
+		await tick();
+
+		const expectedState = [
+			"open",
+			["palette", [[0x0102_0304], 0, 1]],
+			["changes", [3, 2, changes]],
+			["lock", [true, "maintenance"]],
+			"passkey-required",
+			"passkey-success"
+		];
+		expect(state).toEqual(expectedState);
+		workerEndpoint.send(9, [[0x0102_0304], 0, 2]);
+		await tick();
+		expect(state).toEqual(expectedState);
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
+
 	test("rejects malformed strict close notification fields", async () => {
 		let workerEndpoint;
 		let closes = 0;

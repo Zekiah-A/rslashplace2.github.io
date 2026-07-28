@@ -108,7 +108,12 @@ const gameIpc = await createGameIpc(
 		() => defaultCaptchaHandlers?.[2](),
 		handleStrictCooldownInfo,
 		handleStrictCooldown,
-		handleStrictRejectedPixel
+		handleStrictRejectedPixel,
+		handleStrictPalette,
+		handleStrictChanges,
+		handleStrictCanvasRestriction,
+		handleStrictPasskeyRequired,
+		handleStrictPasskeySuccess
 	]
 );
 wsCapsule.addEventListener("message", handleIpcMessage);
@@ -133,7 +138,7 @@ function handleGameConnect() {
 	connectStatus = "connected";
 }
 addIpcMessageHandler("handleConnect", handleGameConnect);
-addIpcMessageHandler("handlePalette", (/**@type {[number[],number,number]}*/[palette, start, end]) => {
+function handleStrictPalette(/**@type {[number[],number,number]}*/[palette, start, end]) {
 	PALETTE = palette;
 	PALETTE_USABLE_REGION.start = start;
 	PALETTE_USABLE_REGION.end = end;
@@ -144,6 +149,9 @@ addIpcMessageHandler("handlePalette", (/**@type {[number[],number,number]}*/[pal
 		composed: true
 	});
 	window.dispatchEvent(paletteEvent);
+}
+addIpcMessageHandler("handlePalette", (/**@type {[number[],number,number]}*/value) => {
+	handleStrictPalette(value);
 });
 function handleStrictCooldownInfo(/**@type {[number, number]}*/[endDateMs, cooldown]) {
 	const endDate = new Date(endDateMs);
@@ -195,8 +203,8 @@ addIpcMessageHandler("handleCanvasInfo", async (/**@type {[number,number]}*/[wid
 	});
 	window.dispatchEvent(boardLoadedEvent);
 });
-addIpcMessageHandler("handleChanges", async (/**@type {[number,number,ArrayBuffer]}*/[width, height, changes]) => {
-	// Used by legacy server
+async function handleStrictChanges(/**@type {[number,number,ArrayBuffer]}*/[width, height, changes]) {
+	// Initial compressed canvas changes.
 	if (width != WIDTH || height != HEIGHT) {
 		setSize(width, height);
 	}
@@ -234,6 +242,9 @@ addIpcMessageHandler("handleChanges", async (/**@type {[number,number,ArrayBuffe
 		composed: true
 	});
 	window.dispatchEvent(boardLoadedEvent);
+}
+addIpcMessageHandler("handleChanges", (/**@type {[number,number,ArrayBuffer]}*/value) => {
+	return handleStrictChanges(value);
 });
 addIpcMessageHandler("setOnline", (/**@type {number}*/count) => {
 	const onlineEvent = new CustomEvent("online", {
@@ -284,7 +295,7 @@ addIpcMessageHandler("handleSetIntId", (/**@type {number}*/userIntId) => {
 	});
 	window.dispatchEvent(intIdEvent);
 });
-addIpcMessageHandler("setCanvasLocked", (/**@type {[boolean, string|null]}*/[locked, reason]) => {
+function handleStrictCanvasRestriction(/**@type {[boolean, string]}*/[locked, reason]) {
 	canvasLocked = locked;
 
 	const canvasLockedEvent = new CustomEvent("canvaslocked", {
@@ -293,6 +304,9 @@ addIpcMessageHandler("setCanvasLocked", (/**@type {[boolean, string|null]}*/[loc
 		composed: true
 	});
 	window.dispatchEvent(canvasLockedEvent);
+}
+addIpcMessageHandler("setCanvasLocked", (/**@type {[boolean, string]}*/value) => {
+	handleStrictCanvasRestriction(value);
 });
 addIpcMessageHandler("handlePixels", (/**@type {{position:number,colour:number,placer:number|undefined}[]}*/pixels) => {
 	for (const pixel of pixels) {
@@ -404,12 +418,14 @@ addIpcMessageHandler("handleChallenge", async (/**@type {[string,string]}*/[sour
 		.constructor(source)(input);
 	sendIpcMessage(wsCapsule, "sendChallengeResult", result);
 });
-addIpcMessageHandler("handlePasskeyAuthRequired", () => {
+function handleStrictPasskeyRequired() {
 	setPasskeyAuthState("required");
-});
-addIpcMessageHandler("handlePasskeyAuthSuccess", () => {
+}
+addIpcMessageHandler("handlePasskeyAuthRequired", handleStrictPasskeyRequired);
+function handleStrictPasskeySuccess() {
 	setPasskeyAuthState("completed");
-});
+}
+addIpcMessageHandler("handlePasskeyAuthSuccess", handleStrictPasskeySuccess);
 addIpcMessageHandler("handleSpectating", (/**@type {number}*/userIntId) => {
 	spectatingIntId = userIntId;
 

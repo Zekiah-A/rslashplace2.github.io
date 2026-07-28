@@ -80,6 +80,35 @@ function isRejectedPixel(value) {
 		Number.isInteger(value[2]) && value[2] >= 0 && value[2] <= 255;
 }
 
+function isCanvasDimensions(width, height) {
+	return Number.isInteger(width) && width > 0 && width <= 0xFFFF_FFFF &&
+		Number.isInteger(height) && height > 0 && height <= 0xFFFF_FFFF &&
+		width * height <= 0x1_0000_0000;
+}
+
+function isPalette(value) {
+	if (!Array.isArray(value) || value.length !== 3 || !Array.isArray(value[0]) ||
+		value[0].length > 255 ||
+		!value[0].every(colour => Number.isInteger(colour) &&
+			colour >= 0 && colour <= 0xFFFF_FFFF)) {
+		return false;
+	}
+	return Number.isInteger(value[1]) && value[1] >= 0 &&
+		Number.isInteger(value[2]) && value[2] >= value[1] &&
+		value[2] <= value[0].length;
+}
+
+function isChanges(value) {
+	return Array.isArray(value) && value.length === 3 &&
+		isCanvasDimensions(value[0], value[1]) &&
+		value[2] instanceof ArrayBuffer;
+}
+
+function isCanvasRestriction(value) {
+	return Array.isArray(value) && value.length === 2 &&
+		typeof value[0] === "boolean" && typeof value[1] === "string";
+}
+
 function createChannelId() {
 	const bytes = crypto.getRandomValues(new Uint8Array(16));
 	return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
@@ -113,7 +142,7 @@ export function selectGameIpcMode(server, officialServer) {
  * @param {string} server
  * @param {string} officialServer
  * @param {number} [bootstrapTimeoutMs]
- * @param {[() => void, (value: [number, string]) => void, (value: DefaultCaptchaChallenge) => void, (value: DefaultCaptchaChallenge) => void, () => void, (value: [number, number]) => void, (value: [number]) => void, (value: [number, number, number]) => void]} [eventHandlers]
+ * @param {[() => void, (value: [number, string]) => void, (value: DefaultCaptchaChallenge) => void, (value: DefaultCaptchaChallenge) => void, () => void, (value: [number, number]) => void, (value: [number]) => void, (value: [number, number, number]) => void, (value: [number[], number, number]) => void, (value: [number, number, ArrayBuffer]) => void, (value: [boolean, string]) => void, () => void, () => void]} [eventHandlers]
  * @returns {Promise<GameIpc>}
  */
 export async function createGameIpc(
@@ -122,6 +151,11 @@ export async function createGameIpc(
 	officialServer,
 	bootstrapTimeoutMs = 5_000,
 	eventHandlers = [
+		() => undefined,
+		() => undefined,
+		() => undefined,
+		() => undefined,
+		() => undefined,
 		() => undefined,
 		() => undefined,
 		() => undefined,
@@ -201,6 +235,8 @@ export async function createGameIpc(
 	let connectionState = 0;
 	const outstandingCaptchas = new Set();
 	let pendingCaptcha = null;
+	// 0 = unknown, 1 = required, 2 = completed.
+	let passkeyState = 0;
 	/** @type {ReturnType<typeof createStrictIpcEndpoint>|undefined} */
 	let endpoint;
 	/** @type {(() => void)|undefined} */
@@ -270,6 +306,32 @@ export async function createGameIpc(
 		kind: "message",
 		validate: value => connectionState === 2 && isRejectedPixel(value),
 		handler: value => { eventHandlers[7](value); }
+	}], [9, {
+		kind: "message",
+		validate: value => connectionState === 2 && isPalette(value),
+		handler: value => { eventHandlers[8](value); }
+	}], [10, {
+		kind: "message",
+		validate: value => connectionState === 2 && isChanges(value),
+		handler: value => eventHandlers[9](value)
+	}], [11, {
+		kind: "message",
+		validate: value => connectionState === 2 && isCanvasRestriction(value),
+		handler: value => { eventHandlers[10](value); }
+	}], [12, {
+		kind: "message",
+		validate: value => connectionState === 2 && passkeyState === 0 && value === undefined,
+		handler: () => {
+			passkeyState = 1;
+			eventHandlers[11]();
+		}
+	}], [13, {
+		kind: "message",
+		validate: value => connectionState === 2 && passkeyState !== 2 && value === undefined,
+		handler: () => {
+			passkeyState = 2;
+			eventHandlers[12]();
+		}
 	}]]);
 	/** @type {Map<number, import("shared-ipc").StrictOutgoingCommand>} */
 	const outgoing = new Map([[0, {
