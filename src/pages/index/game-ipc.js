@@ -70,6 +70,15 @@ function isUnspectating(value) {
 		isUint32(value[0]) && typeof value[1] === "string";
 }
 
+function isPixels(value) {
+	return Array.isArray(value) && value.length > 0 &&
+		value.every(pixel => Array.isArray(pixel) &&
+			(pixel.length === 2 || pixel.length === 3) &&
+			isUint32(pixel[0]) &&
+			Number.isInteger(pixel[1]) && pixel[1] >= 0 && pixel[1] <= 255 &&
+			(pixel.length === 2 || isUint32(pixel[2])));
+}
+
 function isTimestamp(value) {
 	return Number.isSafeInteger(value) && value >= 0 && value <= MAX_DATE_MS;
 }
@@ -153,7 +162,7 @@ export function selectGameIpcMode(server, officialServer) {
  * @param {string} server
  * @param {string} officialServer
  * @param {number} [bootstrapTimeoutMs]
- * @param {[() => void, (value: [number, string]) => void, (value: DefaultCaptchaChallenge) => void, (value: DefaultCaptchaChallenge) => void, () => void, (value: [number, number]) => void, (value: [number]) => void, (value: [number, number, number]) => void, (value: [number[], number, number]) => void, (value: [number, number, ArrayBuffer]) => void, (value: [boolean, string]) => void, () => void, () => void, (value: number) => void, (value: [number, string]) => void]} [eventHandlers]
+ * @param {[() => void, (value: [number, string]) => void, (value: DefaultCaptchaChallenge) => void, (value: DefaultCaptchaChallenge) => void, () => void, (value: [number, number]) => void, (value: [number]) => void, (value: [number, number, number]) => void, (value: [number[], number, number]) => void, (value: [number, number, ArrayBuffer]) => void, (value: [boolean, string]) => void, () => void, () => void, (value: number) => void, (value: [number, string]) => void, (value: ([number, number]|[number, number, number])[]) => void]} [eventHandlers]
  * @returns {Promise<GameIpc>}
  */
 export async function createGameIpc(
@@ -162,6 +171,7 @@ export async function createGameIpc(
 	officialServer,
 	bootstrapTimeoutMs = 5_000,
 	eventHandlers = [
+		() => undefined,
 		() => undefined,
 		() => undefined,
 		() => undefined,
@@ -378,6 +388,10 @@ export async function createGameIpc(
 			spectatingId = null;
 			eventHandlers[14](value);
 		}
+	}], [16, {
+		kind: "message",
+		validate: value => connectionState === 2 && isPixels(value),
+		handler: value => { eventHandlers[15](value); }
 	}]]);
 	/** @type {Map<number, import("shared-ipc").StrictOutgoingCommand>} */
 	const outgoing = new Map([[0, {

@@ -115,7 +115,8 @@ const gameIpc = await createGameIpc(
 		handleStrictPasskeyRequired,
 		handleStrictPasskeySuccess,
 		handleSpectating,
-		handleUnspectating
+		handleUnspectating,
+		handleStrictPixels
 	]
 );
 wsCapsule.addEventListener("message", handleIpcMessage);
@@ -310,7 +311,12 @@ function handleStrictCanvasRestriction(/**@type {[boolean, string]}*/[locked, re
 addIpcMessageHandler("setCanvasLocked", (/**@type {[boolean, string]}*/value) => {
 	handleStrictCanvasRestriction(value);
 });
-addIpcMessageHandler("handlePixels", (/**@type {{position:number,colour:number,placer:number|undefined}[]}*/pixels) => {
+function handleStrictPixels(/**@type {([number, number]|[number, number, number])[]}*/values) {
+	const pixels = values.map(([position, colour, placer]) => ({
+		position,
+		colour,
+		placer
+	}));
 	for (const pixel of pixels) {
 		setPixelI(pixel.position, pixel.colour);
 
@@ -336,6 +342,11 @@ addIpcMessageHandler("handlePixels", (/**@type {{position:number,colour:number,p
 		composed: true
 	});
 	window.dispatchEvent(pixelsEvent);
+}
+addIpcMessageHandler("handlePixels", (/**@type {{position:number,colour:number,placer:number|undefined}[]}*/pixels) => {
+	handleStrictPixels(pixels.map(pixel => pixel.placer === undefined ?
+		[pixel.position, pixel.colour] :
+		[pixel.position, pixel.colour, pixel.placer]));
 });
 function handleStrictRejectedPixel(/**@type {[number, number, number]}*/[endDateMs, position, colour]) {
 	const endDate = new Date(endDateMs);

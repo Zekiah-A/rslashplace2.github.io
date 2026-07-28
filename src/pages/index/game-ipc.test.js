@@ -796,4 +796,48 @@ describe("page game IPC adapter", () => {
 		ipc.dispose();
 		workerEndpoint.dispose();
 	});
+
+	test("privately validates strict pixel broadcasts before page mutation", async () => {
+		let workerEndpoint;
+		const received = [];
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
+					incoming: new Map([[2, {
+						kind: "message",
+						validate: () => true,
+						handler: () => { workerEndpoint.send(1); }
+					}]]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }],
+						[16, { kind: "message", validate: () => true }]
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() {
+				throw new Error("strict pixel broadcast unexpectedly terminated the worker");
+			}
+		};
+		const handlers = Array.from({ length: 16 }, () => () => undefined);
+		handlers[15] = value => { received.push(value); };
+		const ipc = await createGameIpc(
+			worker,
+			"wss://server.rplace.live",
+			"wss://server.rplace.live",
+			100,
+			handlers
+		);
+		ipc.connect("device", null);
+		await tick();
+		workerEndpoint.send(16, [[0, 0], [0xFFFF_FFFF, 255, 7]]);
+		await tick();
+		expect(received).toEqual([[[0, 0], [0xFFFF_FFFF, 255, 7]]]);
+		workerEndpoint.send(16, [[1, 2, -1]]);
+		await tick();
+		expect(received).toHaveLength(1);
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
 });
