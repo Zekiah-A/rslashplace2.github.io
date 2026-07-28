@@ -1,7 +1,8 @@
 import { createStrictIpcEndpoint, sendIpcMessage } from "shared-ipc";
 
 /** @typedef {[number, number, number, number, number]} ClientActivity */
-/** @typedef {{ reportAutomatedActivity: (activity: ClientActivity) => void, stop: () => void, dispose: () => void }} GameIpc */
+/** @typedef {[string, string, string|null]} ConnectArgs */
+/** @typedef {{ connect: (device: string, vip: string|null) => void, reportAutomatedActivity: (activity: ClientActivity) => void, stop: () => void, dispose: () => void }} GameIpc */
 
 /** @param {*} activity */
 function isClientActivity(activity) {
@@ -11,6 +12,23 @@ function isClientActivity(activity) {
 	const [flags, ...dimensions] = activity;
 	return Number.isInteger(flags) && flags >= 1 && flags <= 31 &&
 		dimensions.every(value => Number.isInteger(value) && value >= 0 && value <= 1_000_000);
+}
+
+/** @param {*} args */
+function isConnectArgs(args) {
+	if (!Array.isArray(args) || args.length !== 3 ||
+		typeof args[0] !== "string" || args[0].length === 0 ||
+		typeof args[1] !== "string" ||
+		(args[2] !== null && typeof args[2] !== "string")) {
+		return false;
+	}
+	try {
+		const protocol = new URL(args[1]).protocol;
+		return protocol === "ws:" || protocol === "wss:";
+	}
+	catch {
+		return false;
+	}
 }
 
 function createChannelId() {
@@ -46,6 +64,20 @@ export async function createGameIpc(worker, server, officialServer, bootstrapTim
 	if (mode === "legacy") {
 		let disposed = false;
 		return Object.freeze({
+			/**
+			 * @param {string} device
+			 * @param {string|null} vip
+			 */
+			connect(device, vip) {
+				if (disposed) {
+					throw new Error("Game IPC endpoint is closed");
+				}
+				sendIpcMessage(/** @type {Worker} */(worker), "connect", {
+					device,
+					server,
+					vip
+				});
+			},
 			/** @param {ClientActivity} activity */
 			reportAutomatedActivity(activity) {
 				if (disposed) {
@@ -94,6 +126,9 @@ export async function createGameIpc(worker, server, officialServer, bootstrapTim
 	}], [1, {
 		kind: "message",
 		validate: value => value === undefined
+	}], [2, {
+		kind: "message",
+		validate: isConnectArgs
 	}]]);
 	const endpoint = createStrictIpcEndpoint(channel.port1, {
 		channelId,
@@ -123,7 +158,24 @@ export async function createGameIpc(worker, server, officialServer, bootstrapTim
 	}
 
 	let disposed = false;
+	let connectionStarted = false;
 	return Object.freeze({
+		/**
+		 * @param {string} device
+		 * @param {string|null} vip
+		 */
+		connect(device, vip) {
+			if (disposed) {
+				throw new Error("Game IPC endpoint is closed");
+			}
+			if (connectionStarted) {
+				throw new Error("Game IPC connection already started");
+			}
+			/** @type {ConnectArgs} */
+			const args = [device, server, vip];
+			endpoint.send(2, args);
+			connectionStarted = true;
+		},
 		/** @param {ClientActivity} activity */
 		reportAutomatedActivity(activity) {
 			if (disposed) {

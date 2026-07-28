@@ -431,19 +431,14 @@ addIpcMessageHandler("handleDisconnect", (/**@type {[number, string]}*/[code, re
 
 /**
  * @param {string} device 
- * @param {string} server 
  * @param {string} [vip] 
  */
-export function connect(device, server = DEFAULT_SERVER, vip = undefined) {
+export function connect(device, vip = undefined) {
 	if (connectStatus !== "initial" && connectStatus !== "disconnected") {
 		return;
 	}
 
-	sendIpcMessage(wsCapsule, "connect", {
-		device,
-		server,
-		vip
-	});
+	gameIpc.connect(device, vip ?? null);
 	connectStatus = "connecting";
 }
 

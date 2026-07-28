@@ -2851,7 +2851,7 @@ async function initialise() {
 		// Start initialising websocket connection
 		const fingerprintJS = await FingerprintJS.load();
 		const result = await fingerprintJS.get();
-		connect(result.visitorId, localStorage.server || DEFAULT_SERVER, localStorage.vip);
+		connect(result.visitorId, localStorage.vip);
 	}, Math.max(0, nextSafeConnectDate - Date.now()));
 }
 if (document.readyState !== "loading") {

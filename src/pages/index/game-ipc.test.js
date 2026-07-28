@@ -61,11 +61,58 @@ describe("page game IPC adapter", () => {
 
 		expect(received).toEqual([17, 1920, 1900, 1080, 1000]);
 		expect(() => ipc.reportAutomatedActivity([17, 1, 2, 3])).toThrow();
-		expect(Reflect.ownKeys(ipc).sort()).toEqual(["dispose", "reportAutomatedActivity", "stop"]);
+		expect(Reflect.ownKeys(ipc).sort()).toEqual(["connect", "dispose", "reportAutomatedActivity", "stop"]);
 		ipc.dispose();
 		ipc.stop();
 		await tick();
 		expect(stopCount).toBe(0);
+		workerEndpoint.dispose();
+	});
+
+	test("sends one exact strict connection tuple without using legacy IPC", async () => {
+		let workerEndpoint;
+		const received = [];
+		const bootstrapMessages = [];
+		const worker = {
+			postMessage(data, ports) {
+				bootstrapMessages.push(data);
+				workerEndpoint = createStrictIpcEndpoint(ports[0], {
+					channelId: data[1],
+					incoming: new Map([[2, {
+						kind: "message",
+						validate: () => true,
+						handler: value => { received.push(value); }
+					}]]),
+					outgoing: new Map([[0, {
+						kind: "message",
+						validate: value => value === undefined
+					}]])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() {
+				throw new Error("strict bootstrap unexpectedly failed");
+			}
+		};
+
+		const ipc = await createGameIpc(
+			worker,
+			"wss://server.rplace.live",
+			"wss://server.rplace.live",
+			100
+		);
+		expect(() => ipc.connect("", null)).toThrow();
+		ipc.connect("0123456789abcdef", "!vip");
+		expect(() => ipc.connect("another-device", null)).toThrow();
+		await tick();
+
+		expect(received).toEqual([[
+			"0123456789abcdef",
+			"wss://server.rplace.live",
+			"!vip"
+		]]);
+		expect(bootstrapMessages).toHaveLength(1);
+		ipc.dispose();
 		workerEndpoint.dispose();
 	});
 
@@ -129,21 +176,30 @@ describe("page game IPC adapter", () => {
 		expect(terminated).toBe(true);
 	});
 
-	test("keeps the legacy activity path only in explicit custom-server mode", async () => {
+	test("keeps legacy connect, activity and stop only in explicit custom-server mode", async () => {
 		const messages = [];
 		const worker = {
 			postMessage(value) { messages.push(value); }
 		};
 		const ipc = await createGameIpc(worker, "ws://localhost:3000", "wss://server.rplace.live");
 
+		ipc.connect("custom-device", null);
 		ipc.reportAutomatedActivity([1, 2, 3, 4, 5]);
 		ipc.stop();
 		ipc.stop();
 
-		expect(messages[0].call).toBe("informAutomatedActivity");
-		expect(messages[0].data).toEqual([1, 2, 3, 4, 5]);
-		expect(messages[1]).toMatchObject({ call: "stop", data: undefined });
-		expect(messages).toHaveLength(2);
+		expect(messages[0]).toMatchObject({
+			call: "connect",
+			data: {
+				device: "custom-device",
+				server: "ws://localhost:3000",
+				vip: null
+			}
+		});
+		expect(messages[1].call).toBe("informAutomatedActivity");
+		expect(messages[1].data).toEqual([1, 2, 3, 4, 5]);
+		expect(messages[2]).toMatchObject({ call: "stop", data: undefined });
+		expect(messages).toHaveLength(3);
 		expect(() => ipc.reportAutomatedActivity([1, 2, 3, 4, 5])).toThrow();
 	});
 });
