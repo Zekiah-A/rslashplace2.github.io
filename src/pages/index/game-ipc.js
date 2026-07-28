@@ -1,7 +1,7 @@
 import { createStrictIpcEndpoint, sendIpcMessage } from "shared-ipc";
 
 /** @typedef {[number, number, number, number, number]} ClientActivity */
-/** @typedef {{ reportAutomatedActivity: (activity: ClientActivity) => void, dispose: () => void }} GameIpc */
+/** @typedef {{ reportAutomatedActivity: (activity: ClientActivity) => void, stop: () => void, dispose: () => void }} GameIpc */
 
 /** @param {*} activity */
 function isClientActivity(activity) {
@@ -44,15 +44,28 @@ export function selectGameIpcMode(server, officialServer) {
 export async function createGameIpc(worker, server, officialServer, bootstrapTimeoutMs = 5_000) {
 	const mode = selectGameIpcMode(server, officialServer);
 	if (mode === "legacy") {
+		let disposed = false;
 		return Object.freeze({
 			/** @param {ClientActivity} activity */
 			reportAutomatedActivity(activity) {
+				if (disposed) {
+					throw new Error("Game IPC endpoint is closed");
+				}
 				if (!isClientActivity(activity)) {
 					throw new TypeError("Invalid client activity");
 				}
 				sendIpcMessage(/** @type {Worker} */(worker), "informAutomatedActivity", activity);
 			},
-			dispose() {}
+			stop() {
+				if (disposed) {
+					return;
+				}
+				disposed = true;
+				sendIpcMessage(/** @type {Worker} */(worker), "stop");
+			},
+			dispose() {
+				disposed = true;
+			}
 		});
 	}
 	if (!Number.isSafeInteger(bootstrapTimeoutMs) || bootstrapTimeoutMs <= 0) {
@@ -78,6 +91,9 @@ export async function createGameIpc(worker, server, officialServer, bootstrapTim
 	const outgoing = new Map([[0, {
 		kind: "message",
 		validate: isClientActivity
+	}], [1, {
+		kind: "message",
+		validate: value => value === undefined
 	}]]);
 	const endpoint = createStrictIpcEndpoint(channel.port1, {
 		channelId,
@@ -106,12 +122,32 @@ export async function createGameIpc(worker, server, officialServer, bootstrapTim
 		clearTimeout(timeout);
 	}
 
+	let disposed = false;
 	return Object.freeze({
 		/** @param {ClientActivity} activity */
 		reportAutomatedActivity(activity) {
+			if (disposed) {
+				throw new Error("Game IPC endpoint is closed");
+			}
 			endpoint.send(0, activity);
 		},
+		stop() {
+			if (disposed) {
+				return;
+			}
+			disposed = true;
+			try {
+				endpoint.send(1);
+			}
+			finally {
+				endpoint.dispose();
+			}
+		},
 		dispose() {
+			if (disposed) {
+				return;
+			}
+			disposed = true;
 			endpoint.dispose();
 		}
 	});

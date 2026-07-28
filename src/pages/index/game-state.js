@@ -102,8 +102,7 @@ const gameIpc = await createGameIpc(
 wsCapsule.addEventListener("message", handleIpcMessage);
 window.addEventListener("beforeunload", (e) => {
 	console.log("Stopping wsCapsule...")
-	sendIpcMessage(wsCapsule, "stop");
-	gameIpc.dispose();
+	gameIpc.stop();
 });
 // Undefine global objects
 const undefineGlobals = new CustomEvent("undefineglobals");

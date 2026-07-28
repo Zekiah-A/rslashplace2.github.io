@@ -21,6 +21,7 @@ describe("page game IPC adapter", () => {
 	test("binds a dedicated port and sends only the exact activity tuple", async () => {
 		let workerEndpoint;
 		let received;
+		let stopCount = 0;
 		const worker = {
 			postMessage(data, ports) {
 				expect(data[0]).toBe(1);
@@ -32,6 +33,10 @@ describe("page game IPC adapter", () => {
 						kind: "message",
 						validate: value => Array.isArray(value) && value.length === 5,
 						handler: value => { received = value; }
+					}], [1, {
+						kind: "message",
+						validate: value => value === undefined,
+						handler: () => { stopCount++; }
 					}]]),
 					outgoing: new Map([[0, {
 						kind: "message",
@@ -56,8 +61,55 @@ describe("page game IPC adapter", () => {
 
 		expect(received).toEqual([17, 1920, 1900, 1080, 1000]);
 		expect(() => ipc.reportAutomatedActivity([17, 1, 2, 3])).toThrow();
-		expect(Reflect.ownKeys(ipc).sort()).toEqual(["dispose", "reportAutomatedActivity"]);
+		expect(Reflect.ownKeys(ipc).sort()).toEqual(["dispose", "reportAutomatedActivity", "stop"]);
 		ipc.dispose();
+		ipc.stop();
+		await tick();
+		expect(stopCount).toBe(0);
+		workerEndpoint.dispose();
+	});
+
+	test("sends strict stop once, disposes locally and never emits the legacy route", async () => {
+		let workerEndpoint;
+		let stopCount = 0;
+		const bootstrapMessages = [];
+		const worker = {
+			postMessage(data, ports) {
+				bootstrapMessages.push(data);
+				workerEndpoint = createStrictIpcEndpoint(ports[0], {
+					channelId: data[1],
+					incoming: new Map([[1, {
+						kind: "message",
+						validate: value => value === undefined,
+						handler: () => { stopCount++; }
+					}]]),
+					outgoing: new Map([[0, {
+						kind: "message",
+						validate: value => value === undefined
+					}]])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() {
+				throw new Error("strict bootstrap unexpectedly failed");
+			}
+		};
+
+		const ipc = await createGameIpc(
+			worker,
+			"wss://server.rplace.live",
+			"wss://server.rplace.live",
+			100
+		);
+		ipc.stop();
+		ipc.stop();
+		ipc.dispose();
+		await tick();
+
+		expect(stopCount).toBe(1);
+		expect(bootstrapMessages).toHaveLength(1);
+		expect(bootstrapMessages[0][0]).toBe(1);
+		expect(() => ipc.reportAutomatedActivity([17, 1, 2, 3, 4])).toThrow();
 		workerEndpoint.dispose();
 	});
 
@@ -78,15 +130,20 @@ describe("page game IPC adapter", () => {
 	});
 
 	test("keeps the legacy activity path only in explicit custom-server mode", async () => {
-		let message;
+		const messages = [];
 		const worker = {
-			postMessage(value) { message = value; }
+			postMessage(value) { messages.push(value); }
 		};
 		const ipc = await createGameIpc(worker, "ws://localhost:3000", "wss://server.rplace.live");
 
 		ipc.reportAutomatedActivity([1, 2, 3, 4, 5]);
+		ipc.stop();
+		ipc.stop();
 
-		expect(message.call).toBe("informAutomatedActivity");
-		expect(message.data).toEqual([1, 2, 3, 4, 5]);
+		expect(messages[0].call).toBe("informAutomatedActivity");
+		expect(messages[0].data).toEqual([1, 2, 3, 4, 5]);
+		expect(messages[1]).toMatchObject({ call: "stop", data: undefined });
+		expect(messages).toHaveLength(2);
+		expect(() => ipc.reportAutomatedActivity([1, 2, 3, 4, 5])).toThrow();
 	});
 });
