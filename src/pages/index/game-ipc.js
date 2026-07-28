@@ -3,7 +3,7 @@ import { createStrictIpcEndpoint, sendIpcMessage } from "shared-ipc";
 /** @typedef {[number, number, number, number, number]} ClientActivity */
 /** @typedef {[string, string, string|null]} ConnectArgs */
 /** @typedef {[number, string[], Uint8Array]} DefaultCaptchaChallenge */
-/** @typedef {{ connect: (device: string, vip: string|null) => void, putPixel: (position: number, colour: number) => void, reportAutomatedActivity: (activity: ClientActivity) => void, sendCaptchaResult: (captchaId: number, result: string) => void, setName: (name: string) => void, spectateUser: (userId: number) => void, unspectateUser: () => void, stop: () => void, dispose: () => void }} GameIpc */
+/** @typedef {{ chatReact: (messageId: number, reaction: string) => void, connect: (device: string, vip: string|null) => void, putPixel: (position: number, colour: number) => void, reportAutomatedActivity: (activity: ClientActivity) => void, sendCaptchaResult: (captchaId: number, result: string) => void, setName: (name: string) => void, spectateUser: (userId: number) => void, unspectateUser: () => void, stop: () => void, dispose: () => void }} GameIpc */
 const MAX_DATE_MS = 8_640_000_000_000_000;
 
 /** @param {*} activity */
@@ -88,6 +88,18 @@ function isNameEntries(value) {
 
 function isNameRequest(value) {
 	return typeof value === "string" && value.length <= 16;
+}
+
+function isChatReactionRequest(value) {
+	return Array.isArray(value) && value.length === 2 &&
+		isUint32(value[0]) && typeof value[1] === "string" &&
+		value[1].length > 0 && value[1].length <= 255;
+}
+
+function isChatReaction(value) {
+	return Array.isArray(value) && value.length === 3 &&
+		isUint32(value[0]) && isUint32(value[1]) &&
+		typeof value[2] === "string" && value[2].length > 0;
 }
 
 function isTimestamp(value) {
@@ -203,6 +215,8 @@ export async function createGameIpc(
 		() => undefined,
 		() => undefined,
 		() => undefined,
+		() => undefined,
+		() => undefined,
 		() => undefined
 	]
 ) {
@@ -277,6 +291,19 @@ export async function createGameIpc(
 					throw new TypeError("Invalid chat name");
 				}
 				sendIpcMessage(/** @type {Worker} */(worker), "setName", name);
+			},
+			chatReact(messageId, reaction) {
+				if (disposed) {
+					throw new Error("Game IPC endpoint is closed");
+				}
+				const value = [messageId, reaction];
+				if (!isChatReactionRequest(value)) {
+					throw new TypeError("Invalid chat reaction");
+				}
+				sendIpcMessage(/** @type {Worker} */(worker), "chatReact", {
+					messageId,
+					reactKey: reaction
+				});
 			},
 			stop() {
 				if (disposed) {
@@ -459,6 +486,14 @@ export async function createGameIpc(
 			spectators.delete(value);
 			eventHandlers[21](value);
 		}
+	}], [23, {
+		kind: "message",
+		validate: value => connectionState === 2 && isUint32(value),
+		handler: value => { eventHandlers[22](value); }
+	}], [24, {
+		kind: "message",
+		validate: value => connectionState === 2 && isChatReaction(value),
+		handler: value => { eventHandlers[23](value); }
 	}]]);
 	/** @type {Map<number, import("shared-ipc").StrictOutgoingCommand>} */
 	const outgoing = new Map([[0, {
@@ -485,6 +520,9 @@ export async function createGameIpc(
 	}], [7, {
 		kind: "message",
 		validate: isNameRequest
+	}], [8, {
+		kind: "message",
+		validate: isChatReactionRequest
 	}]]);
 	let timeout;
 	const timeoutPromise = new Promise((_, reject) => {
@@ -635,6 +673,16 @@ export async function createGameIpc(
 				throw new Error("Chat name is not valid");
 			}
 			endpoint.send(7, name);
+		},
+		chatReact(messageId, reaction) {
+			if (disposed) {
+				throw new Error("Game IPC endpoint is closed");
+			}
+			const value = [messageId, reaction];
+			if (connectionState !== 2 || !isChatReactionRequest(value)) {
+				throw new Error("Chat reaction is not valid");
+			}
+			endpoint.send(8, value);
 		},
 		stop() {
 			if (disposed) {

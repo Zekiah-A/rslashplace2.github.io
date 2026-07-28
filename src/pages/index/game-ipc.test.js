@@ -82,6 +82,7 @@ describe("page game IPC adapter", () => {
 		expect(received).toEqual([17, 1920, 1900, 1080, 1000]);
 		expect(() => ipc.reportAutomatedActivity([17, 1, 2, 3])).toThrow();
 		expect(Reflect.ownKeys(ipc).sort()).toEqual([
+			"chatReact",
 			"connect",
 			"dispose",
 			"putPixel",
@@ -983,6 +984,47 @@ describe("page game IPC adapter", () => {
 		expect(() => ipc.setName("12345678901234567")).toThrow();
 		await tick();
 		expect(names).toEqual(["", "1234567890123456"]);
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
+
+	test("sends and receives validated strict chat reactions", async () => {
+		let workerEndpoint;
+		const sent = [];
+		const received = [];
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
+					incoming: new Map([
+						[2, { kind: "message", validate: () => true, handler: () => workerEndpoint.send(1) }],
+						[8, { kind: "message", validate: () => true, handler: value => sent.push(value) }]
+					]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }],
+						[23, { kind: "message", validate: () => true }],
+						[24, { kind: "message", validate: () => true }]
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() { throw new Error("strict reaction unexpectedly terminated"); }
+		};
+		const handlers = Array.from({ length: 24 }, () => () => undefined);
+		handlers[22] = value => received.push(["delete", value]);
+		handlers[23] = value => received.push(["reaction", value]);
+		const ipc = await createGameIpc(
+			worker, "wss://server.rplace.live", "wss://server.rplace.live", 100, handlers
+		);
+		ipc.connect("device", null);
+		await tick();
+		ipc.chatReact(7, "👍");
+		workerEndpoint.send(23, 9);
+		workerEndpoint.send(24, [7, 8, "👍"]);
+		await tick();
+		expect(sent).toEqual([[7, "👍"]]);
+		expect(received).toEqual([["delete", 9], ["reaction", [7, 8, "👍"]]]);
+		expect(() => ipc.chatReact(-1, "")).toThrow();
 		ipc.dispose();
 		workerEndpoint.dispose();
 	});

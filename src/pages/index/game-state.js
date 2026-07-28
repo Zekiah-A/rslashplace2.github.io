@@ -122,7 +122,9 @@ const gameIpc = await createGameIpc(
 		handleNameInfo,
 		handleChatName,
 		handleSpectatorJoined,
-		handleSpectatorLeft
+		handleSpectatorLeft,
+		handleChatDelete,
+		handleChatReaction
 	]
 );
 wsCapsule.addEventListener("message", handleIpcMessage);
@@ -414,22 +416,24 @@ addIpcMessageHandler("addPlaceChatMessage", (/**@type {PlaceChatMessage}*/messag
 	});
 	window.dispatchEvent(placeChatMessageEvent);
 });
-addIpcMessageHandler("handleLiveChatDelete", (/**@type {number}*/messageId) => {
+function handleChatDelete(/**@type {number}*/messageId) {
 	const liveChatDeleteEvent = new CustomEvent("livechatdelete", {
 		detail: { messageId },
 		bubbles: true,
 		composed: true
 	});
 	window.dispatchEvent(liveChatDeleteEvent);
-});
-addIpcMessageHandler("handleLiveChatReaction", (/**@type {[number,number,string]}*/[messageId, reactorId, reactionKey]) => {
+}
+addIpcMessageHandler("handleLiveChatDelete", handleChatDelete);
+function handleChatReaction(/**@type {[number,number,string]}*/[messageId, reactorId, reactionKey]) {
 	const liveChatReactionEvent = new CustomEvent("livechatreaction", {
 		detail: { messageId, reactorId, reactionKey },
 		bubbles: true,
 		composed: true
 	});
 	window.dispatchEvent(liveChatReactionEvent);
-});
+}
+addIpcMessageHandler("handleLiveChatReaction", handleChatReaction);
 addIpcMessageHandler("applyPunishment", (/**@type {ModerationInfo}*/info) => {
 	const punishmentEvent = new CustomEvent("punishment", {
 		detail: info,
@@ -534,6 +538,10 @@ export function sendServerMessage(name, args=undefined, event=undefined) {
 	}
 	if (name === "setName") {
 		gameIpc.setName(args);
+		return;
+	}
+	if (name === "chatReact") {
+		gameIpc.chatReact(args.messageId, args.reactKey);
 		return;
 	}
 	sendIpcMessage(wsCapsule, name, args);
