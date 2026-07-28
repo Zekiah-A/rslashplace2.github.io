@@ -3,7 +3,7 @@ import { createStrictIpcEndpoint, sendIpcMessage } from "shared-ipc";
 /** @typedef {[number, number, number, number, number]} ClientActivity */
 /** @typedef {[string, string, string|null]} ConnectArgs */
 /** @typedef {[number, string[], Uint8Array]} DefaultCaptchaChallenge */
-/** @typedef {{ chatReact: (messageId: number, reaction: string) => void, chatReport: (messageId: number, reason: string) => void, connect: (device: string, vip: string|null) => void, putPixel: (position: number, colour: number) => void, reportAutomatedActivity: (activity: ClientActivity) => void, requestChatHistory: (channel: string, anchorMsgId?: number, msgCount?: number) => void, sendCaptchaResult: (captchaId: number, result: string) => void, sendChallengeResult: (result: bigint) => void, sendHCaptchaResult: (captchaId: number, result: string) => void, sendLiveChat: (message: string, channel: string, replyId: number|null) => void, sendPlaceChat: (message: string, position: number) => void, sendTurnstileResult: (captchaId: number, result: string) => void, setName: (name: string) => void, spectateUser: (userId: number) => void, unspectateUser: () => void, stop: () => void, dispose: () => void }} GameIpc */
+/** @typedef {{ chatReact: (messageId: number, reaction: string) => void, chatReport: (messageId: number, reason: string) => void, connect: (device: string, vip: string|null) => void, putPixel: (position: number, colour: number) => void, reportAutomatedActivity: (activity: ClientActivity) => void, requestChatHistory: (channel: string, anchorMsgId?: number, msgCount?: number) => void, requestPixelPlacers: (position: number, width: number, height: number) => void, sendCaptchaResult: (captchaId: number, result: string) => void, sendChallengeResult: (result: bigint) => void, sendHCaptchaResult: (captchaId: number, result: string) => void, sendLiveChat: (message: string, channel: string, replyId: number|null) => void, sendPlaceChat: (message: string, position: number) => void, sendTurnstileResult: (captchaId: number, result: string) => void, setName: (name: string) => void, spectateUser: (userId: number) => void, unspectateUser: () => void, stop: () => void, dispose: () => void }} GameIpc */
 const MAX_DATE_MS = 8_640_000_000_000_000;
 const textEncoder = new TextEncoder();
 
@@ -198,6 +198,22 @@ function isExternalCaptchaResult(value) {
 		textEncoder.encode(value[1]).byteLength <= 65_533;
 }
 
+function isPlacerRegionRequest(value) {
+	return Array.isArray(value) && value.length === 3 &&
+		isUint32(value[0]) &&
+		Number.isInteger(value[1]) && value[1] >= 1 && value[1] <= 15 &&
+		Number.isInteger(value[2]) && value[2] >= 1 && value[2] <= 15;
+}
+
+function isPlacerRegion(value) {
+	return Array.isArray(value) && value.length === 4 &&
+		isUint32(value[0]) &&
+		Number.isInteger(value[1]) && value[1] >= 1 && value[1] <= 15 &&
+		Number.isInteger(value[2]) && value[2] >= 1 && value[2] <= 15 &&
+		value[3] instanceof ArrayBuffer &&
+		value[3].byteLength === value[1] * value[2] * 4;
+}
+
 function isTimestamp(value) {
 	return Number.isSafeInteger(value) && value >= 0 && value <= MAX_DATE_MS;
 }
@@ -322,6 +338,7 @@ export async function createGameIpc(
 		() => undefined,
 		() => undefined,
 		() => undefined,
+		() => undefined,
 		() => undefined
 	]
 ) {
@@ -369,6 +386,13 @@ export async function createGameIpc(
 				sendIpcMessage(/** @type {Worker} */(worker), "requestLoadChannelPrevious", {
 					channel, anchorMsgId, msgCount
 				});
+			},
+			requestPixelPlacers(position, width, height) {
+				if (disposed) throw new Error("Game IPC endpoint is closed");
+				const value = [position, width, height];
+				if (!isPlacerRegionRequest(value)) throw new TypeError("Invalid placer-region request");
+				sendIpcMessage(/** @type {Worker} */(worker), "requestPixelPlacers",
+					{ position, width, height });
 			},
 			sendChallengeResult(result) {
 				if (disposed) throw new Error("Game IPC endpoint is closed");
@@ -491,6 +515,7 @@ export async function createGameIpc(
 	let challengePending = false;
 	let turnstile = null;
 	let hcaptcha = null;
+	const placerRequests = [];
 	/** @type {ReturnType<typeof createStrictIpcEndpoint>|undefined} */
 	let endpoint;
 	/** @type {(() => void)|undefined} */
@@ -712,6 +737,23 @@ export async function createGameIpc(
 			hcaptcha = null;
 			eventHandlers[32]();
 		}
+	}], [34, {
+		kind: "message",
+		validate: value => {
+			if (connectionState !== 2 || !isPlacerRegion(value)) return false;
+			return placerRequests.some(request =>
+				request[0] === value[0] &&
+				value[1] <= request[1] && value[2] <= request[2]
+			);
+		},
+		handler: value => {
+			const requestIndex = placerRequests.findIndex(request =>
+				request[0] === value[0] &&
+				value[1] <= request[1] && value[2] <= request[2]
+			);
+			placerRequests.splice(requestIndex, 1);
+			eventHandlers[33](value);
+		}
 	}]]);
 	/** @type {Map<number, import("shared-ipc").StrictOutgoingCommand>} */
 	const outgoing = new Map([[0, {
@@ -762,6 +804,9 @@ export async function createGameIpc(
 	}], [15, {
 		kind: "message",
 		validate: isExternalCaptchaResult
+	}], [16, {
+		kind: "message",
+		validate: isPlacerRegionRequest
 	}]]);
 	let timeout;
 	const timeoutPromise = new Promise((_, reject) => {
@@ -987,6 +1032,16 @@ export async function createGameIpc(
 			}
 			hcaptcha.submitted = true;
 			endpoint.send(15, value);
+		},
+		requestPixelPlacers(position, width, height) {
+			if (disposed) throw new Error("Game IPC endpoint is closed");
+			const value = [position, width, height];
+			if (connectionState !== 2 || !isPlacerRegionRequest(value)) {
+				throw new Error("Placer-region request is not valid");
+			}
+			if (placerRequests.length === 64) placerRequests.shift();
+			placerRequests.push(value);
+			endpoint.send(16, value);
 		},
 		stop() {
 			if (disposed) {

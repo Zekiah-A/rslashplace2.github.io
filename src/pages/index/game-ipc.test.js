@@ -89,6 +89,7 @@ describe("page game IPC adapter", () => {
 			"putPixel",
 			"reportAutomatedActivity",
 			"requestChatHistory",
+			"requestPixelPlacers",
 			"sendCaptchaResult",
 			"sendChallengeResult",
 			"sendHCaptchaResult",
@@ -1249,6 +1250,46 @@ describe("page game IPC adapter", () => {
 			["hcaptcha", [8, "h-token"]]
 		]);
 		expect(events).toHaveLength(4);
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
+
+	test("correlates non-square strict placer-region responses", async () => {
+		let workerEndpoint;
+		const requests = [];
+		const responses = [];
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
+					incoming: new Map([
+						[2, { kind: "message", validate: () => true, handler: () => workerEndpoint.send(1) }],
+						[16, { kind: "message", validate: () => true, handler: value => requests.push(value) }]
+					]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }],
+						[34, { kind: "message", validate: () => true }]
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() { throw new Error("strict placer region unexpectedly terminated"); }
+		};
+		const handlers = Array.from({ length: 34 }, () => () => undefined);
+		handlers[33] = value => responses.push(value);
+		const ipc = await createGameIpc(
+			worker, "wss://server.rplace.live", "wss://server.rplace.live", 100, handlers
+		);
+		ipc.connect("device", null);
+		await tick();
+		ipc.requestPixelPlacers(7, 3, 5);
+		expect(() => ipc.requestPixelPlacers(7, 3, 16)).toThrow();
+		await tick();
+		workerEndpoint.send(34, [7, 2, 4, new ArrayBuffer(32)]);
+		workerEndpoint.send(34, [7, 2, 4, new ArrayBuffer(32)]);
+		await tick();
+		expect(requests).toEqual([[7, 3, 5]]);
+		expect(responses).toHaveLength(1);
 		ipc.dispose();
 		workerEndpoint.dispose();
 	});

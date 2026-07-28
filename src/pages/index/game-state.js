@@ -133,7 +133,8 @@ const gameIpc = await createGameIpc(
 		value => dispatchSecurityEvent("turnstilechallenge", value),
 		() => dispatchSecurityEvent("turnstilesuccess"),
 		value => dispatchSecurityEvent("hcaptchachallenge", value),
-		() => dispatchSecurityEvent("hcaptchasuccess")
+		() => dispatchSecurityEvent("hcaptchasuccess"),
+		handlePlacerRegion
 	]
 );
 wsCapsule.addEventListener("message", handleIpcMessage);
@@ -275,7 +276,7 @@ function handleOnline(/**@type {number}*/count) {
 	window.dispatchEvent(onlineEvent);
 }
 addIpcMessageHandler("setOnline", handleOnline);
-addIpcMessageHandler("handlePlacerInfoRegion", (/**@type {[number,number,Number,ArrayBuffer]}*/[position, width, height, region]) => {
+function handlePlacerRegion(/**@type {[number,number,number,ArrayBuffer]}*/[position, width, height, region]) {
 	const regionView = new DataView(region);
 	let i = position;
 	let regionI = 0;
@@ -296,7 +297,8 @@ addIpcMessageHandler("handlePlacerInfoRegion", (/**@type {[number,number,Number,
 		composed: true
 	});
 	window.dispatchEvent(placerInfoEvent);
-});
+}
+addIpcMessageHandler("handlePlacerInfoRegion", handlePlacerRegion);
 function handleSetIntId(/**@type {number}*/userIntId) {
 	intId = userIntId;
 	if (automatedActivityFlags !== 0) {
@@ -634,6 +636,10 @@ export function sendServerMessage(name, args=undefined, event=undefined) {
 	}
 	if (name === "sendHCaptchaResult") {
 		gameIpc.sendHCaptchaResult(args.captchaId, args.result);
+		return;
+	}
+	if (name === "requestPixelPlacers") {
+		gameIpc.requestPixelPlacers(args.position, args.width, args.height);
 		return;
 	}
 	sendIpcMessage(wsCapsule, name, args);
