@@ -3,7 +3,7 @@ import { createStrictIpcEndpoint, sendIpcMessage } from "shared-ipc";
 /** @typedef {[number, number, number, number, number]} ClientActivity */
 /** @typedef {[string, string, string|null]} ConnectArgs */
 /** @typedef {[number, string[], Uint8Array]} DefaultCaptchaChallenge */
-/** @typedef {{ chatReact: (messageId: number, reaction: string) => void, chatReport: (messageId: number, reason: string) => void, connect: (device: string, vip: string|null) => void, putPixel: (position: number, colour: number) => void, reportAutomatedActivity: (activity: ClientActivity) => void, requestChatHistory: (channel: string, anchorMsgId?: number, msgCount?: number) => void, sendCaptchaResult: (captchaId: number, result: string) => void, sendLiveChat: (message: string, channel: string, replyId: number|null) => void, sendPlaceChat: (message: string, position: number) => void, setName: (name: string) => void, spectateUser: (userId: number) => void, unspectateUser: () => void, stop: () => void, dispose: () => void }} GameIpc */
+/** @typedef {{ chatReact: (messageId: number, reaction: string) => void, chatReport: (messageId: number, reason: string) => void, connect: (device: string, vip: string|null) => void, putPixel: (position: number, colour: number) => void, reportAutomatedActivity: (activity: ClientActivity) => void, requestChatHistory: (channel: string, anchorMsgId?: number, msgCount?: number) => void, sendCaptchaResult: (captchaId: number, result: string) => void, sendChallengeResult: (result: bigint) => void, sendLiveChat: (message: string, channel: string, replyId: number|null) => void, sendPlaceChat: (message: string, position: number) => void, setName: (name: string) => void, spectateUser: (userId: number) => void, unspectateUser: () => void, stop: () => void, dispose: () => void }} GameIpc */
 const MAX_DATE_MS = 8_640_000_000_000_000;
 const textEncoder = new TextEncoder();
 
@@ -174,6 +174,17 @@ function isChatHistory(value) {
 	);
 }
 
+function isChallenge(value) {
+	return Array.isArray(value) && value.length === 2 &&
+		typeof value[0] === "string" && value[0].length > 0 &&
+		value[1] instanceof Uint8Array && value[1].byteLength > 0;
+}
+
+function isChallengeResult(value) {
+	return typeof value === "bigint" &&
+		value >= 0n && value <= 0xFFFF_FFFF_FFFF_FFFFn;
+}
+
 function isTimestamp(value) {
 	return Number.isSafeInteger(value) && value >= 0 && value <= MAX_DATE_MS;
 }
@@ -293,6 +304,7 @@ export async function createGameIpc(
 		() => undefined,
 		() => undefined,
 		() => undefined,
+		() => undefined,
 		() => undefined
 	]
 ) {
@@ -340,6 +352,11 @@ export async function createGameIpc(
 				sendIpcMessage(/** @type {Worker} */(worker), "requestLoadChannelPrevious", {
 					channel, anchorMsgId, msgCount
 				});
+			},
+			sendChallengeResult(result) {
+				if (disposed) throw new Error("Game IPC endpoint is closed");
+				if (!isChallengeResult(result)) throw new TypeError("Invalid challenge result");
+				sendIpcMessage(/** @type {Worker} */(worker), "sendChallengeResult", result);
 			},
 			putPixel(position, colour) {
 				if (disposed) {
@@ -440,6 +457,7 @@ export async function createGameIpc(
 	let userId = null;
 	const spectators = new Set();
 	const pendingChatHistories = new Map();
+	let challengePending = false;
 	/** @type {ReturnType<typeof createStrictIpcEndpoint>|undefined} */
 	let endpoint;
 	/** @type {(() => void)|undefined} */
@@ -621,6 +639,14 @@ export async function createGameIpc(
 			else pendingChatHistories.set(value[3], pending - 1);
 			eventHandlers[27](value);
 		}
+	}], [29, {
+		kind: "message",
+		validate: value => connectionState === 2 && !challengePending &&
+			isChallenge(value),
+		handler: value => {
+			challengePending = true;
+			eventHandlers[28](value);
+		}
 	}]]);
 	/** @type {Map<number, import("shared-ipc").StrictOutgoingCommand>} */
 	const outgoing = new Map([[0, {
@@ -662,6 +688,9 @@ export async function createGameIpc(
 	}], [12, {
 		kind: "message",
 		validate: isChatHistoryRequest
+	}], [13, {
+		kind: "message",
+		validate: isChallengeResult
 	}]]);
 	let timeout;
 	const timeoutPromise = new Promise((_, reject) => {
@@ -856,6 +885,15 @@ export async function createGameIpc(
 			endpoint.send(12, value);
 			pendingChatHistories.set(channel,
 				(pendingChatHistories.get(channel) || 0) + 1);
+		},
+		sendChallengeResult(result) {
+			if (disposed) throw new Error("Game IPC endpoint is closed");
+			if (connectionState !== 2 || !challengePending ||
+				!isChallengeResult(result)) {
+				throw new Error("Challenge result is not valid");
+			}
+			challengePending = false;
+			endpoint.send(13, result);
 		},
 		stop() {
 			if (disposed) {

@@ -90,6 +90,7 @@ describe("page game IPC adapter", () => {
 			"reportAutomatedActivity",
 			"requestChatHistory",
 			"sendCaptchaResult",
+			"sendChallengeResult",
 			"sendLiveChat",
 			"sendPlaceChat",
 			"setName",
@@ -1154,6 +1155,47 @@ describe("page game IPC adapter", () => {
 		await tick();
 		expect(sent).toEqual([["global", 7, 32]]);
 		expect(received).toHaveLength(1);
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
+
+	test("correlates one strict padlock challenge result", async () => {
+		let workerEndpoint;
+		const sent = [];
+		const challenges = [];
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
+					incoming: new Map([
+						[2, { kind: "message", validate: () => true, handler: () => workerEndpoint.send(1) }],
+						[13, { kind: "message", validate: () => true, handler: value => sent.push(value) }]
+					]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }],
+						[29, { kind: "message", validate: () => true }]
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() { throw new Error("strict challenge unexpectedly terminated"); }
+		};
+		const handlers = Array.from({ length: 29 }, () => () => undefined);
+		handlers[28] = value => challenges.push(value);
+		const ipc = await createGameIpc(
+			worker, "wss://server.rplace.live", "wss://server.rplace.live", 100, handlers
+		);
+		ipc.connect("device", null);
+		await tick();
+		expect(() => ipc.sendChallengeResult(1n)).toThrow();
+		workerEndpoint.send(29, ["return 1n", new Uint8Array([1])]);
+		workerEndpoint.send(29, ["return 2n", new Uint8Array([2])]);
+		await tick();
+		ipc.sendChallengeResult(1n);
+		expect(() => ipc.sendChallengeResult(2n)).toThrow();
+		await tick();
+		expect(challenges).toHaveLength(1);
+		expect(sent).toEqual([1n]);
 		ipc.dispose();
 		workerEndpoint.dispose();
 	});

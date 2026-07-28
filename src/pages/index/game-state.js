@@ -128,7 +128,8 @@ const gameIpc = await createGameIpc(
 		handleLiveChat,
 		handlePlaceChat,
 		handlePunishment,
-		handleChatHistory
+		handleChatHistory,
+		handleChallenge
 	]
 );
 wsCapsule.addEventListener("message", handleIpcMessage);
@@ -501,11 +502,12 @@ function handleChatHistory(/**@type {[number,number,boolean,string,Array]}*/[
 		}
 	}));
 }
-addIpcMessageHandler("handleChallenge", async (/**@type {[string,string]}*/[source, input]) => {
+async function handleChallenge(/**@type {[string,Uint8Array]}*/[source, input]) {
 	const result = await Object.getPrototypeOf(async function () { })
 		.constructor(source)(input);
-	sendIpcMessage(wsCapsule, "sendChallengeResult", result);
-});
+	gameIpc.sendChallengeResult(result);
+}
+addIpcMessageHandler("handleChallenge", value => { void handleChallenge(value); });
 function handleStrictPasskeyRequired() {
 	setPasskeyAuthState("required");
 }
