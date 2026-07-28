@@ -82,9 +82,10 @@ export default defineConfig({
 			}
 		}),
 		sri({
-			ignoreMissingAssets: true,
+			ignoreMissingAssets: false,
 			crossorigin: "anonymous",
-			excludeExternal: true
+			excludeExternal: true,
+			includePatterns: [/^\/assets\//]
 		}),
 		devMode ? undefined
 			: cloudflare({
