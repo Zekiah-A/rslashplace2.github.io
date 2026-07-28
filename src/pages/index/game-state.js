@@ -113,7 +113,9 @@ const gameIpc = await createGameIpc(
 		handleStrictChanges,
 		handleStrictCanvasRestriction,
 		handleStrictPasskeyRequired,
-		handleStrictPasskeySuccess
+		handleStrictPasskeySuccess,
+		handleSpectating,
+		handleUnspectating
 	]
 );
 wsCapsule.addEventListener("message", handleIpcMessage);
@@ -426,7 +428,7 @@ function handleStrictPasskeySuccess() {
 	setPasskeyAuthState("completed");
 }
 addIpcMessageHandler("handlePasskeyAuthSuccess", handleStrictPasskeySuccess);
-addIpcMessageHandler("handleSpectating", (/**@type {number}*/userIntId) => {
+function handleSpectating(/**@type {number}*/userIntId) {
 	spectatingIntId = userIntId;
 
 	const spectatingEvent = new CustomEvent("spectating", {
@@ -435,8 +437,9 @@ addIpcMessageHandler("handleSpectating", (/**@type {number}*/userIntId) => {
 		bubbles: true
 	});
 	window.dispatchEvent(spectatingEvent);
-});
-addIpcMessageHandler("handleUnspectating", (/**@type {[number, string]}*/[ userIntId, reason ]) => {
+}
+addIpcMessageHandler("handleSpectating", handleSpectating);
+function handleUnspectating(/**@type {[number, string]}*/[ userIntId, reason ]) {
 	if (spectatingIntId === userIntId) {
 		spectatingIntId = null;
 	}
@@ -447,7 +450,8 @@ addIpcMessageHandler("handleUnspectating", (/**@type {[number, string]}*/[ userI
 		bubbles: true
 	});
 	window.dispatchEvent(unspectatingEvent);
-});
+}
+addIpcMessageHandler("handleUnspectating", handleUnspectating);
 addIpcMessageHandler("handleSpectated", (/**@type {number}*/spectatorIntId) => {
 	spectators.add(spectatorIntId);
 });
@@ -495,6 +499,14 @@ export function sendServerMessage(name, args=undefined, event=undefined) {
 		throw new Error("Trusted method event was invalid");
 	}
 
+	if (name === "spectateUser") {
+		gameIpc.spectateUser(args);
+		return;
+	}
+	if (name === "unspectateUser") {
+		gameIpc.unspectateUser();
+		return;
+	}
 	sendIpcMessage(wsCapsule, name, args);
 }
 

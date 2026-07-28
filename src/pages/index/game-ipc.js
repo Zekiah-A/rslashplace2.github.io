@@ -3,7 +3,7 @@ import { createStrictIpcEndpoint, sendIpcMessage } from "shared-ipc";
 /** @typedef {[number, number, number, number, number]} ClientActivity */
 /** @typedef {[string, string, string|null]} ConnectArgs */
 /** @typedef {[number, string[], Uint8Array]} DefaultCaptchaChallenge */
-/** @typedef {{ connect: (device: string, vip: string|null) => void, putPixel: (position: number, colour: number) => void, reportAutomatedActivity: (activity: ClientActivity) => void, sendCaptchaResult: (captchaId: number, result: string) => void, stop: () => void, dispose: () => void }} GameIpc */
+/** @typedef {{ connect: (device: string, vip: string|null) => void, putPixel: (position: number, colour: number) => void, reportAutomatedActivity: (activity: ClientActivity) => void, sendCaptchaResult: (captchaId: number, result: string) => void, spectateUser: (userId: number) => void, unspectateUser: () => void, stop: () => void, dispose: () => void }} GameIpc */
 const MAX_DATE_MS = 8_640_000_000_000_000;
 
 /** @param {*} activity */
@@ -57,6 +57,17 @@ function isPixelPlacement(value) {
 	return Array.isArray(value) && value.length === 2 &&
 		Number.isInteger(value[0]) && value[0] >= 0 && value[0] <= 0xFFFF_FFFF &&
 		Number.isInteger(value[1]) && value[1] >= 0 && value[1] <= 255;
+}
+
+/** @param {*} value */
+function isUint32(value) {
+	return Number.isInteger(value) && value >= 0 && value <= 0xFFFF_FFFF;
+}
+
+/** @param {*} value */
+function isUnspectating(value) {
+	return Array.isArray(value) && value.length === 2 &&
+		isUint32(value[0]) && typeof value[1] === "string";
 }
 
 function isTimestamp(value) {
@@ -142,7 +153,7 @@ export function selectGameIpcMode(server, officialServer) {
  * @param {string} server
  * @param {string} officialServer
  * @param {number} [bootstrapTimeoutMs]
- * @param {[() => void, (value: [number, string]) => void, (value: DefaultCaptchaChallenge) => void, (value: DefaultCaptchaChallenge) => void, () => void, (value: [number, number]) => void, (value: [number]) => void, (value: [number, number, number]) => void, (value: [number[], number, number]) => void, (value: [number, number, ArrayBuffer]) => void, (value: [boolean, string]) => void, () => void, () => void]} [eventHandlers]
+ * @param {[() => void, (value: [number, string]) => void, (value: DefaultCaptchaChallenge) => void, (value: DefaultCaptchaChallenge) => void, () => void, (value: [number, number]) => void, (value: [number]) => void, (value: [number, number, number]) => void, (value: [number[], number, number]) => void, (value: [number, number, ArrayBuffer]) => void, (value: [boolean, string]) => void, () => void, () => void, (value: number) => void, (value: [number, string]) => void]} [eventHandlers]
  * @returns {Promise<GameIpc>}
  */
 export async function createGameIpc(
@@ -151,6 +162,8 @@ export async function createGameIpc(
 	officialServer,
 	bootstrapTimeoutMs = 5_000,
 	eventHandlers = [
+		() => undefined,
+		() => undefined,
 		() => undefined,
 		() => undefined,
 		() => undefined,
@@ -212,6 +225,22 @@ export async function createGameIpc(
 					colour
 				});
 			},
+			/** @param {number} userId */
+			spectateUser(userId) {
+				if (disposed) {
+					throw new Error("Game IPC endpoint is closed");
+				}
+				if (!isUint32(userId)) {
+					throw new TypeError("Invalid spectate target");
+				}
+				sendIpcMessage(/** @type {Worker} */(worker), "spectateUser", userId);
+			},
+			unspectateUser() {
+				if (disposed) {
+					throw new Error("Game IPC endpoint is closed");
+				}
+				sendIpcMessage(/** @type {Worker} */(worker), "unspectateUser");
+			},
 			stop() {
 				if (disposed) {
 					return;
@@ -237,6 +266,8 @@ export async function createGameIpc(
 	let pendingCaptcha = null;
 	// 0 = unknown, 1 = required, 2 = completed.
 	let passkeyState = 0;
+	/** @type {number|null} */
+	let spectatingId = null;
 	/** @type {ReturnType<typeof createStrictIpcEndpoint>|undefined} */
 	let endpoint;
 	/** @type {(() => void)|undefined} */
@@ -332,6 +363,21 @@ export async function createGameIpc(
 			passkeyState = 2;
 			eventHandlers[12]();
 		}
+	}], [14, {
+		kind: "message",
+		validate: value => connectionState === 2 && isUint32(value),
+		handler: value => {
+			spectatingId = value;
+			eventHandlers[13](value);
+		}
+	}], [15, {
+		kind: "message",
+		validate: value => connectionState === 2 && isUnspectating(value) &&
+			spectatingId === value[0],
+		handler: value => {
+			spectatingId = null;
+			eventHandlers[14](value);
+		}
 	}]]);
 	/** @type {Map<number, import("shared-ipc").StrictOutgoingCommand>} */
 	const outgoing = new Map([[0, {
@@ -349,6 +395,12 @@ export async function createGameIpc(
 	}], [4, {
 		kind: "message",
 		validate: isPixelPlacement
+	}], [5, {
+		kind: "message",
+		validate: isUint32
+	}], [6, {
+		kind: "message",
+		validate: value => value === undefined
 	}]]);
 	let timeout;
 	const timeoutPromise = new Promise((_, reject) => {
@@ -470,6 +522,25 @@ export async function createGameIpc(
 				throw new Error("Pixel placement is not valid");
 			}
 			endpoint.send(4, value);
+		},
+		/** @param {number} userId */
+		spectateUser(userId) {
+			if (disposed) {
+				throw new Error("Game IPC endpoint is closed");
+			}
+			if (connectionState !== 2 || !isUint32(userId)) {
+				throw new Error("Spectate target is not valid");
+			}
+			endpoint.send(5, userId);
+		},
+		unspectateUser() {
+			if (disposed) {
+				throw new Error("Game IPC endpoint is closed");
+			}
+			if (connectionState !== 2 || spectatingId === null) {
+				throw new Error("Game IPC is not spectating");
+			}
+			endpoint.send(6);
 		},
 		stop() {
 			if (disposed) {

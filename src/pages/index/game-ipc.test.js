@@ -87,7 +87,9 @@ describe("page game IPC adapter", () => {
 			"putPixel",
 			"reportAutomatedActivity",
 			"sendCaptchaResult",
-			"stop"
+			"spectateUser",
+			"stop",
+			"unspectateUser"
 		]);
 		ipc.dispose();
 		ipc.stop();
@@ -711,6 +713,86 @@ describe("page game IPC adapter", () => {
 		await tick();
 
 		expect(placements).toEqual([[0xFFFF_FFFF, 255]]);
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
+
+	test("strictly correlates spectating requests and placement-gating confirmations", async () => {
+		let workerEndpoint;
+		const requests = [];
+		const notices = [];
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
+					incoming: new Map([
+						[2, {
+							kind: "message",
+							validate: () => true,
+							handler: () => { workerEndpoint.send(1); }
+						}],
+						[5, {
+							kind: "message",
+							validate: () => true,
+							handler: value => { requests.push(["spectate", value]); }
+						}],
+						[6, {
+							kind: "message",
+							validate: () => true,
+							handler: () => { requests.push(["unspectate"]); }
+						}]
+					]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }],
+						[14, { kind: "message", validate: () => true }],
+						[15, { kind: "message", validate: () => true }]
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() {
+				throw new Error("strict bootstrap unexpectedly failed");
+			}
+		};
+		const handlers = Array.from({ length: 15 }, () => () => undefined);
+		handlers[13] = value => { notices.push(["spectating", value]); };
+		handlers[14] = value => { notices.push(["unspectating", value]); };
+		const ipc = await createGameIpc(
+			worker,
+			"wss://server.rplace.live",
+			"wss://server.rplace.live",
+			100,
+			handlers
+		);
+
+		expect(() => ipc.spectateUser(7)).toThrow();
+		expect(() => ipc.unspectateUser()).toThrow();
+		ipc.connect("device", null);
+		await tick();
+		expect(() => ipc.spectateUser(-1)).toThrow();
+		ipc.spectateUser(0xFFFF_FFFF);
+		await tick();
+		expect(requests).toEqual([["spectate", 0xFFFF_FFFF]]);
+		expect(() => ipc.unspectateUser()).toThrow();
+
+		workerEndpoint.send(14, 0xFFFF_FFFF);
+		await tick();
+		ipc.unspectateUser();
+		await tick();
+		expect(requests).toEqual([
+			["spectate", 0xFFFF_FFFF],
+			["unspectate"]
+		]);
+		workerEndpoint.send(15, [0xFFFF_FFFF, "target closed"]);
+		await tick();
+		expect(notices).toEqual([
+			["spectating", 0xFFFF_FFFF],
+			["unspectating", [0xFFFF_FFFF, "target closed"]]
+		]);
+		expect(() => ipc.unspectateUser()).toThrow();
+		workerEndpoint.send(15, [0xFFFF_FFFF, "stale"]);
+		await tick();
+		expect(notices).toHaveLength(2);
 		ipc.dispose();
 		workerEndpoint.dispose();
 	});
