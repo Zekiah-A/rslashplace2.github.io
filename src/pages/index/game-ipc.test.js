@@ -89,6 +89,8 @@ describe("page game IPC adapter", () => {
 			"putPixel",
 			"reportAutomatedActivity",
 			"sendCaptchaResult",
+			"sendLiveChat",
+			"sendPlaceChat",
 			"setName",
 			"spectateUser",
 			"stop",
@@ -1029,6 +1031,53 @@ describe("page game IPC adapter", () => {
 		expect(received).toEqual([["delete", 9], ["reaction", [7, 8, "👍"]]]);
 		expect(() => ipc.chatReact(-1, "")).toThrow();
 		expect(() => ipc.chatReport(7, "")).toThrow();
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
+
+	test("sends and receives closed strict live and place chat shapes", async () => {
+		let workerEndpoint;
+		const sent = [];
+		const received = [];
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
+					incoming: new Map([
+						[2, { kind: "message", validate: () => true, handler: () => workerEndpoint.send(1) }],
+						[10, { kind: "message", validate: () => true, handler: value => sent.push(["live", value]) }],
+						[11, { kind: "message", validate: () => true, handler: value => sent.push(["place", value]) }]
+					]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }],
+						[25, { kind: "message", validate: () => true }],
+						[26, { kind: "message", validate: () => true }]
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() { throw new Error("strict chat unexpectedly terminated"); }
+		};
+		const handlers = Array.from({ length: 26 }, () => () => undefined);
+		handlers[24] = value => received.push(["live", value]);
+		handlers[25] = value => received.push(["place", value]);
+		const ipc = await createGameIpc(
+			worker, "wss://server.rplace.live", "wss://server.rplace.live", 100, handlers
+		);
+		ipc.connect("device", null);
+		await tick();
+		ipc.sendLiveChat("hello", "global", 7);
+		ipc.sendPlaceChat("hi", 9);
+		workerEndpoint.send(25, [1, "hello", 2, "name", 3, "global", 7]);
+		workerEndpoint.send(26, [9, "hi", 2, "name"]);
+		await tick();
+		expect(sent).toEqual([
+			["live", ["hello", "global", 7]],
+			["place", ["hi", 9]]
+		]);
+		expect(received).toHaveLength(2);
+		expect(() => ipc.sendLiveChat("", "global", null)).toThrow();
+		expect(() => ipc.sendPlaceChat("", 9)).toThrow();
 		ipc.dispose();
 		workerEndpoint.dispose();
 	});

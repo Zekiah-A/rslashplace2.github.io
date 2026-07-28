@@ -124,7 +124,9 @@ const gameIpc = await createGameIpc(
 		handleSpectatorJoined,
 		handleSpectatorLeft,
 		handleChatDelete,
-		handleChatReaction
+		handleChatReaction,
+		handleLiveChat,
+		handlePlaceChat
 	]
 );
 wsCapsule.addEventListener("message", handleIpcMessage);
@@ -400,21 +402,44 @@ function handleNameInfo(/**@type {[number, string][]}*/entries) {
 addIpcMessageHandler("handleNameInfo", (/**@type {Map<number, string>}*/newIntIdNames) => {
 	handleNameInfo(Array.from(newIntIdNames.entries()));
 });
-addIpcMessageHandler("addLiveChatMessage", (/**@type {[LiveChatMessage,string]}*/[message, channel]) => {
+function handleLiveChat(/**@type {[number,string,number,string,number,string,number|null]}*/[
+	messageId, content, senderIntId, senderChatName, sendDate, channel, repliesTo
+]) {
+	const message = {
+		messageId, content, senderIntId, senderChatName, sendDate,
+		reactions: new Map(),
+		channel,
+		repliesTo
+	};
 	const liveChatMessageEvent = new CustomEvent("livechatmessage", {
 		detail: { message, channel },
 		bubbles: true,
 		composed: true
 	});
 	window.dispatchEvent(liveChatMessageEvent);
+}
+addIpcMessageHandler("addLiveChatMessage", (/**@type {[LiveChatMessage,string]}*/[message, channel]) => {
+	handleLiveChat([
+		message.messageId, message.content, message.senderIntId,
+		message.senderChatName, message.sendDate, channel, message.repliesTo
+	]);
 });
-addIpcMessageHandler("addPlaceChatMessage", (/**@type {PlaceChatMessage}*/message) => {
+function handlePlaceChat(/**@type {[number,string,number,string]}*/[
+	positionIndex, content, senderIntId, senderChatName
+]) {
+	const message = { positionIndex, content, senderIntId, senderChatName };
 	const placeChatMessageEvent = new CustomEvent("placechatmessage", {
 		detail: { message },
 		bubbles: true,
 		composed: true
 	});
 	window.dispatchEvent(placeChatMessageEvent);
+}
+addIpcMessageHandler("addPlaceChatMessage", (/**@type {PlaceChatMessage}*/message) => {
+	handlePlaceChat([
+		message.positionIndex, message.content,
+		message.senderIntId, message.senderChatName
+	]);
 });
 function handleChatDelete(/**@type {number}*/messageId) {
 	const liveChatDeleteEvent = new CustomEvent("livechatdelete", {
@@ -546,6 +571,14 @@ export function sendServerMessage(name, args=undefined, event=undefined) {
 	}
 	if (name === "chatReport") {
 		gameIpc.chatReport(args.messageId, args.reason);
+		return;
+	}
+	if (name === "sendLiveChatMsg") {
+		gameIpc.sendLiveChat(args.message, args.channel, args.replyId);
+		return;
+	}
+	if (name === "sendPlaceChatMsg") {
+		gameIpc.sendPlaceChat(args.message, args.position);
 		return;
 	}
 	sendIpcMessage(wsCapsule, name, args);
