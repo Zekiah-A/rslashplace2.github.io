@@ -31,6 +31,13 @@ function isConnectArgs(args) {
 	}
 }
 
+/** @param {*} value */
+function isDisconnect(value) {
+	return Array.isArray(value) && value.length === 2 &&
+		Number.isInteger(value[0]) && value[0] >= 0 && value[0] <= 65_535 &&
+		typeof value[1] === "string";
+}
+
 function createChannelId() {
 	const bytes = crypto.getRandomValues(new Uint8Array(16));
 	return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
@@ -57,9 +64,16 @@ export function selectGameIpcMode(server, officialServer) {
  * @param {string} server
  * @param {string} officialServer
  * @param {number} [bootstrapTimeoutMs]
+ * @param {[() => void, (value: [number, string]) => void]} [lifecycleHandlers]
  * @returns {Promise<GameIpc>}
  */
-export async function createGameIpc(worker, server, officialServer, bootstrapTimeoutMs = 5_000) {
+export async function createGameIpc(
+	worker,
+	server,
+	officialServer,
+	bootstrapTimeoutMs = 5_000,
+	lifecycleHandlers = [() => undefined, () => undefined]
+) {
 	const mode = selectGameIpcMode(server, officialServer);
 	if (mode === "legacy") {
 		let disposed = false;
@@ -106,6 +120,9 @@ export async function createGameIpc(worker, server, officialServer, bootstrapTim
 
 	const channel = new MessageChannel();
 	const channelId = createChannelId();
+	let disposed = false;
+	// 0 = port-bound, 1 = connecting, 2 = open, 3 = closed.
+	let connectionState = 0;
 	/** @type {(() => void)|undefined} */
 	let markReady;
 	/** @type {Promise<void>} */
@@ -117,6 +134,26 @@ export async function createGameIpc(worker, server, officialServer, bootstrapTim
 		handler: () => {
 			markReady?.();
 			markReady = undefined;
+		}
+	}], [1, {
+		kind: "message",
+		validate: value => connectionState === 1 && value === undefined,
+		handler: () => {
+			connectionState = 2;
+			lifecycleHandlers[0]();
+		}
+	}], [2, {
+		kind: "message",
+		validate: value => (connectionState === 1 || connectionState === 2) && isDisconnect(value),
+		handler: value => {
+			connectionState = 3;
+			disposed = true;
+			try {
+				lifecycleHandlers[1](value);
+			}
+			finally {
+				endpoint.dispose();
+			}
 		}
 	}]]);
 	/** @type {Map<number, import("shared-ipc").StrictOutgoingCommand>} */
@@ -157,8 +194,6 @@ export async function createGameIpc(worker, server, officialServer, bootstrapTim
 		clearTimeout(timeout);
 	}
 
-	let disposed = false;
-	let connectionStarted = false;
 	return Object.freeze({
 		/**
 		 * @param {string} device
@@ -168,18 +203,21 @@ export async function createGameIpc(worker, server, officialServer, bootstrapTim
 			if (disposed) {
 				throw new Error("Game IPC endpoint is closed");
 			}
-			if (connectionStarted) {
+			if (connectionState !== 0) {
 				throw new Error("Game IPC connection already started");
 			}
 			/** @type {ConnectArgs} */
 			const args = [device, server, vip];
 			endpoint.send(2, args);
-			connectionStarted = true;
+			connectionState = 1;
 		},
 		/** @param {ClientActivity} activity */
 		reportAutomatedActivity(activity) {
 			if (disposed) {
 				throw new Error("Game IPC endpoint is closed");
+			}
+			if (connectionState !== 2) {
+				throw new Error("Game IPC connection is not open");
 			}
 			endpoint.send(0, activity);
 		},

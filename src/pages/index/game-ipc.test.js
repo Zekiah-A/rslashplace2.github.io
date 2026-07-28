@@ -33,12 +33,19 @@ describe("page game IPC adapter", () => {
 						kind: "message",
 						validate: value => Array.isArray(value) && value.length === 5,
 						handler: value => { received = value; }
+					}], [2, {
+						kind: "message",
+						validate: () => true,
+						handler: () => { workerEndpoint.send(1); }
 					}], [1, {
 						kind: "message",
 						validate: value => value === undefined,
 						handler: () => { stopCount++; }
 					}]]),
 					outgoing: new Map([[0, {
+						kind: "message",
+						validate: value => value === undefined
+					}], [1, {
 						kind: "message",
 						validate: value => value === undefined
 					}]])
@@ -56,6 +63,8 @@ describe("page game IPC adapter", () => {
 			"wss://server.rplace.live",
 			100
 		);
+		ipc.connect("device", null);
+		await tick();
 		ipc.reportAutomatedActivity([17, 1920, 1900, 1080, 1000]);
 		await tick();
 
@@ -112,6 +121,96 @@ describe("page game IPC adapter", () => {
 			"!vip"
 		]]);
 		expect(bootstrapMessages).toHaveLength(1);
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
+
+	test("privately validates strict open and close lifecycle notifications", async () => {
+		let workerEndpoint;
+		const lifecycle = [];
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createStrictIpcEndpoint(ports[0], {
+					channelId: data[1],
+					incoming: new Map([[2, {
+						kind: "message",
+						validate: () => true,
+						handler: () => {
+							workerEndpoint.send(1);
+							workerEndpoint.send(2, [1000, "complete"]);
+						}
+					}]]),
+					outgoing: new Map([[0, {
+						kind: "message",
+						validate: value => value === undefined
+					}], [1, {
+						kind: "message",
+						validate: value => value === undefined
+					}], [2, {
+						kind: "message",
+						validate: () => true
+					}]])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() {
+				throw new Error("strict bootstrap unexpectedly failed");
+			}
+		};
+
+		const ipc = await createGameIpc(
+			worker,
+			"wss://server.rplace.live",
+			"wss://server.rplace.live",
+			100,
+			[
+				() => { lifecycle.push("open"); },
+				value => { lifecycle.push(value); }
+			]
+		);
+		ipc.connect("device", null);
+		await tick();
+
+		expect(lifecycle).toEqual(["open", [1000, "complete"]]);
+		expect(() => ipc.reportAutomatedActivity([17, 1, 2, 3, 4])).toThrow();
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
+
+	test("rejects malformed strict close notification fields", async () => {
+		let workerEndpoint;
+		let closes = 0;
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createStrictIpcEndpoint(ports[0], {
+					channelId: data[1],
+					incoming: new Map(),
+					outgoing: new Map([[0, {
+						kind: "message",
+						validate: value => value === undefined
+					}], [2, {
+						kind: "message",
+						validate: () => true
+					}]])
+				});
+				workerEndpoint.send(0);
+				workerEndpoint.send(2, [65_536, "invalid"]);
+			},
+			terminate() {
+				throw new Error("strict bootstrap unexpectedly failed");
+			}
+		};
+
+		const ipc = await createGameIpc(
+			worker,
+			"wss://server.rplace.live",
+			"wss://server.rplace.live",
+			100,
+			[() => undefined, () => { closes++; }]
+		);
+		await tick();
+
+		expect(closes).toBe(0);
 		ipc.dispose();
 		workerEndpoint.dispose();
 	});

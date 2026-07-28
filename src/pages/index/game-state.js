@@ -97,7 +97,9 @@ const wsCapsule = new Worker(url, {
 const gameIpc = await createGameIpc(
 	wsCapsule,
 	selectedServer,
-	DEFAULT_SERVER
+	DEFAULT_SERVER,
+	undefined,
+	[handleGameConnect, handleGameDisconnect]
 );
 wsCapsule.addEventListener("message", handleIpcMessage);
 window.addEventListener("beforeunload", (e) => {
@@ -117,9 +119,10 @@ const automatedActivityFlags =
 	(navigator?.plugins?.length === 0 ? 8 : 0) |
 	(/HeadlessChrome/.test(navigator.userAgent) ? 16 : 0);
 
-addIpcMessageHandler("handleConnect", () => {
+function handleGameConnect() {
 	connectStatus = "connected";
-});
+}
+addIpcMessageHandler("handleConnect", handleGameConnect);
 addIpcMessageHandler("handlePalette", (/**@type {[number[],number,number]}*/[palette, start, end]) => {
 	PALETTE = palette;
 	PALETTE_USABLE_REGION.start = start;
@@ -414,7 +417,8 @@ addIpcMessageHandler("handleSpectated", (/**@type {number}*/spectatorIntId) => {
 addIpcMessageHandler("handleUnspectated", (/**@type {number}*/spectatorIntId) => {
 	spectators.delete(spectatorIntId);
 });
-addIpcMessageHandler("handleDisconnect", (/**@type {[number, string]}*/[code, reason]) => {
+/** @param {[number, string]} value */
+function handleGameDisconnect([code, reason]) {
 	localStorage.lastDisconnect = Date.now();
 	connectStatus = "disconnected";
 	setCooldown(null);
@@ -427,7 +431,8 @@ addIpcMessageHandler("handleDisconnect", (/**@type {[number, string]}*/[code, re
 		bubbles: true
 	});
 	window.dispatchEvent(disconnectEvent);
-});
+}
+addIpcMessageHandler("handleDisconnect", handleGameDisconnect);
 
 /**
  * @param {string} device 
