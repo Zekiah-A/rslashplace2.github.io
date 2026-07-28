@@ -127,7 +127,8 @@ const gameIpc = await createGameIpc(
 		handleChatReaction,
 		handleLiveChat,
 		handlePlaceChat,
-		handlePunishment
+		handlePunishment,
+		handleChatHistory
 	]
 );
 wsCapsule.addEventListener("message", handleIpcMessage);
@@ -476,6 +477,30 @@ addIpcMessageHandler("applyPunishment", (/**@type {ModerationInfo}*/info) => {
 		info.state, info.startDate, info.endDate, info.reason, info.appeal
 	]);
 });
+function handleChatHistory(/**@type {[number,number,boolean,string,Array]}*/[
+	fromMessageId, count, before, channel, messages
+]) {
+	window.dispatchEvent(new CustomEvent("livechathistory", {
+		detail: {
+			fromMessageId,
+			count,
+			before,
+			channel,
+			messages: messages.map(message => ({
+				messageId: message[0],
+				content: message[1],
+				senderIntId: message[2],
+				senderChatName: "",
+				sendDate: message[3],
+				reactions: new Map(message[4].map(
+					reaction => [reaction[0], new Set(reaction[1])]
+				)),
+				channel: message[5],
+				repliesTo: message[6]
+			}))
+		}
+	}));
+}
 addIpcMessageHandler("handleChallenge", async (/**@type {[string,string]}*/[source, input]) => {
 	const result = await Object.getPrototypeOf(async function () { })
 		.constructor(source)(input);
@@ -588,6 +613,10 @@ export function sendServerMessage(name, args=undefined, event=undefined) {
 	}
 	if (name === "sendPlaceChatMsg") {
 		gameIpc.sendPlaceChat(args.message, args.position);
+		return;
+	}
+	if (name === "requestLoadChannelPrevious") {
+		gameIpc.requestChatHistory(args.channel, args.anchorMsgId, args.msgCount);
 		return;
 	}
 	sendIpcMessage(wsCapsule, name, args);

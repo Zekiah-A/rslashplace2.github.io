@@ -88,6 +88,7 @@ describe("page game IPC adapter", () => {
 			"dispose",
 			"putPixel",
 			"reportAutomatedActivity",
+			"requestChatHistory",
 			"sendCaptchaResult",
 			"sendLiveChat",
 			"sendPlaceChat",
@@ -1112,6 +1113,47 @@ describe("page game IPC adapter", () => {
 		workerEndpoint.send(27, [4, 1000, 2000, "reason", "appeal"]);
 		await tick();
 		expect(received).toEqual([[3, 1000, 2000, "reason", "appeal"]]);
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
+
+	test("sends and receives bounded strict chat history", async () => {
+		let workerEndpoint;
+		const sent = [];
+		const received = [];
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
+					incoming: new Map([
+						[2, { kind: "message", validate: () => true, handler: () => workerEndpoint.send(1) }],
+						[12, { kind: "message", validate: () => true, handler: value => sent.push(value) }]
+					]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }],
+						[28, { kind: "message", validate: () => true }]
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() { throw new Error("strict history unexpectedly terminated"); }
+		};
+		const handlers = Array.from({ length: 28 }, () => () => undefined);
+		handlers[27] = value => received.push(value);
+		const ipc = await createGameIpc(
+			worker, "wss://server.rplace.live", "wss://server.rplace.live", 100, handlers
+		);
+		ipc.connect("device", null);
+		await tick();
+		ipc.requestChatHistory("global", 7, 32);
+		expect(() => ipc.requestChatHistory("global", 7, 128)).toThrow();
+		workerEndpoint.send(28, [7, 1, true, "global", [
+			[8, "hi", 9, 10, [["👍", [9]]], "global", null]
+		]]);
+		workerEndpoint.send(28, [7, 1, true, "global", []]);
+		await tick();
+		expect(sent).toEqual([["global", 7, 32]]);
+		expect(received).toHaveLength(1);
 		ipc.dispose();
 		workerEndpoint.dispose();
 	});

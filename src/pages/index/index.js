@@ -1738,6 +1738,9 @@ function addLiveChatMessages({ channel, messages, before }) {
 	});
 }
 addIpcMessageHandler("addLiveChatMessages", addLiveChatMessages);
+window.addEventListener("livechathistory", event => {
+	addLiveChatMessages(event.detail);
+});
 addIpcMessageHandler("handleClientViewport", (/**@type {[number, number]}*/[ boardRenderer, movementMode ]) => {
 	if (boardRenderer === RENDERER_TYPE.BoardRenderer3D) {
 		throw new Error("Not implemented");
