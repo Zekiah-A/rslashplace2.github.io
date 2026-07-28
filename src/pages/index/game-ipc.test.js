@@ -897,4 +897,48 @@ describe("page game IPC adapter", () => {
 		ipc.dispose();
 		workerEndpoint.dispose();
 	});
+
+	test("correlates strict spectator joins and leaves", async () => {
+		let workerEndpoint;
+		const received = [];
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
+					incoming: new Map([[2, {
+						kind: "message",
+						validate: () => true,
+						handler: () => { workerEndpoint.send(1); }
+					}]]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }],
+						[21, { kind: "message", validate: () => true }],
+						[22, { kind: "message", validate: () => true }]
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() {
+				throw new Error("strict spectator state unexpectedly terminated the worker");
+			}
+		};
+		const handlers = Array.from({ length: 22 }, () => () => undefined);
+		handlers[20] = value => { received.push(["join", value]); };
+		handlers[21] = value => { received.push(["left", value]); };
+		const ipc = await createGameIpc(
+			worker, "wss://server.rplace.live", "wss://server.rplace.live", 100, handlers
+		);
+		ipc.connect("device", null);
+		await tick();
+		workerEndpoint.send(21, 7);
+		await tick();
+		workerEndpoint.send(22, 7);
+		await tick();
+		expect(received).toEqual([["join", 7], ["left", 7]]);
+		workerEndpoint.send(22, 7);
+		await tick();
+		expect(received).toHaveLength(2);
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
 });

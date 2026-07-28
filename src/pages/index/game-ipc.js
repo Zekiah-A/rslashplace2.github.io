@@ -197,6 +197,8 @@ export async function createGameIpc(
 		() => undefined,
 		() => undefined,
 		() => undefined,
+		() => undefined,
+		() => undefined,
 		() => undefined
 	]
 ) {
@@ -291,6 +293,7 @@ export async function createGameIpc(
 	let spectatingId = null;
 	/** @type {number|null} */
 	let userId = null;
+	const spectators = new Set();
 	/** @type {ReturnType<typeof createStrictIpcEndpoint>|undefined} */
 	let endpoint;
 	/** @type {(() => void)|undefined} */
@@ -426,6 +429,22 @@ export async function createGameIpc(
 		validate: value => connectionState === 2 &&
 			typeof value === "string" && value.length <= 255,
 		handler: value => { eventHandlers[19](value); }
+	}], [21, {
+		kind: "message",
+		validate: value => connectionState === 2 && isUint32(value) &&
+			!spectators.has(value),
+		handler: value => {
+			spectators.add(value);
+			eventHandlers[20](value);
+		}
+	}], [22, {
+		kind: "message",
+		validate: value => connectionState === 2 && isUint32(value) &&
+			spectators.has(value),
+		handler: value => {
+			spectators.delete(value);
+			eventHandlers[21](value);
+		}
 	}]]);
 	/** @type {Map<number, import("shared-ipc").StrictOutgoingCommand>} */
 	const outgoing = new Map([[0, {

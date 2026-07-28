@@ -120,7 +120,9 @@ const gameIpc = await createGameIpc(
 		handleOnline,
 		handleSetIntId,
 		handleNameInfo,
-		handleChatName
+		handleChatName,
+		handleSpectatorJoined,
+		handleSpectatorLeft
 	]
 );
 wsCapsule.addEventListener("message", handleIpcMessage);
@@ -473,12 +475,14 @@ function handleUnspectating(/**@type {[number, string]}*/[ userIntId, reason ]) 
 	window.dispatchEvent(unspectatingEvent);
 }
 addIpcMessageHandler("handleUnspectating", handleUnspectating);
-addIpcMessageHandler("handleSpectated", (/**@type {number}*/spectatorIntId) => {
+function handleSpectatorJoined(/**@type {number}*/spectatorIntId) {
 	spectators.add(spectatorIntId);
-});
-addIpcMessageHandler("handleUnspectated", (/**@type {number}*/spectatorIntId) => {
+}
+addIpcMessageHandler("handleSpectated", handleSpectatorJoined);
+function handleSpectatorLeft(/**@type {number}*/spectatorIntId) {
 	spectators.delete(spectatorIntId);
-});
+}
+addIpcMessageHandler("handleUnspectated", handleSpectatorLeft);
 /** @param {[number, string]} value */
 function handleGameDisconnect([code, reason]) {
 	localStorage.lastDisconnect = Date.now();
