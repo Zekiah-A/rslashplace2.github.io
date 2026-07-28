@@ -63,6 +63,13 @@ function createChannelId() {
 	return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/** @param {unknown} value */
+function isWorkerBootstrap(value) {
+	return Array.isArray(value) && value.length === 3 && value[0] === 1 &&
+		value.slice(1).every(sequence => Number.isSafeInteger(sequence) &&
+			sequence >= 0 && sequence <= 0xFFFF_FFFF_FFFF);
+}
+
 /**
  * The official origin is strict-required. A different origin can only come
  * from the existing explicit custom-server selection.
@@ -169,6 +176,8 @@ export async function createGameIpc(
 	let connectionState = 0;
 	const outstandingCaptchas = new Set();
 	let pendingCaptcha = null;
+	/** @type {ReturnType<typeof createStrictIpcEndpoint>|undefined} */
+	let endpoint;
 	/** @type {(() => void)|undefined} */
 	let markReady;
 	/** @type {Promise<void>} */
@@ -198,7 +207,7 @@ export async function createGameIpc(
 				eventHandlers[1](value);
 			}
 			finally {
-				endpoint.dispose();
+				endpoint?.dispose();
 			}
 		}
 	}], [3, {
@@ -242,26 +251,70 @@ export async function createGameIpc(
 		kind: "message",
 		validate: isPixelPlacement
 	}]]);
-	const endpoint = createStrictIpcEndpoint(channel.port1, {
-		channelId,
-		incoming,
-		outgoing
-	});
-	incoming.clear();
-	outgoing.clear();
-
 	let timeout;
+	const timeoutPromise = new Promise((_, reject) => {
+		timeout = setTimeout(reject, bootstrapTimeoutMs);
+	});
+	/** @type {(event: MessageEvent) => void} */
+	const handleBootstrap = event => {
+		channel.port1.removeEventListener("message", handleBootstrap);
+		if (!isWorkerBootstrap(event.data)) {
+			failBootstrap?.(new Error("Invalid worker bootstrap"));
+			return;
+		}
+		completeBootstrap?.([event.data[1], event.data[2]]);
+	};
+	/** @type {((value: [number, number]) => void)|undefined} */
+	let completeBootstrap;
+	/** @type {((error: Error) => void)|undefined} */
+	let failBootstrap;
+	/** @type {Promise<[number, number]>} */
+	const bootstrapPromise = new Promise((resolve, reject) => {
+		completeBootstrap = resolve;
+		failBootstrap = reject;
+	});
+	channel.port1.addEventListener("message", handleBootstrap);
+	channel.port1.start();
+
 	try {
 		worker.postMessage([1, channelId], [channel.port2]);
-		await Promise.race([
-			readyPromise,
-			new Promise((_, reject) => {
-				timeout = setTimeout(reject, bootstrapTimeoutMs);
-			})
-		]);
+		const sequenceStarts = await Promise.race([bootstrapPromise, timeoutPromise]);
+		/** @param {{ reason: string, call?: import("shared-ipc").StrictIpcCommand }} rejection */
+		const failSequence = rejection => {
+			if (rejection.reason !== "invalid-sequence" || disposed) {
+				return;
+			}
+			const priorState = connectionState;
+			disposed = true;
+			connectionState = 3;
+			endpoint?.dispose("Game IPC integrity failure");
+			worker.terminate();
+			try {
+				console.warn("Game IPC sequence integrity failure");
+			}
+			catch {
+				// Diagnostics must not affect terminal enforcement.
+			}
+			if (priorState === 1 || priorState === 2) {
+				eventHandlers[1]([1002, "Game IPC integrity failure"]);
+			}
+		};
+		endpoint = createStrictIpcEndpoint(channel.port1, {
+			channelId,
+			incoming,
+			outgoing,
+			sendSequenceStart: sequenceStarts[0],
+			receiveSequenceStart: sequenceStarts[1],
+			onReject: failSequence
+		});
+		incoming.clear();
+		outgoing.clear();
+		await Promise.race([readyPromise, timeoutPromise]);
 	}
 	catch {
-		endpoint.dispose("Game IPC bootstrap failed");
+		channel.port1.removeEventListener("message", handleBootstrap);
+		endpoint?.dispose("Game IPC bootstrap failed");
+		channel.port1.close();
 		worker.terminate();
 		throw new Error("Game IPC bootstrap failed");
 	}

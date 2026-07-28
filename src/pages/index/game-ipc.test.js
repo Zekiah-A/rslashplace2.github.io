@@ -1,9 +1,21 @@
 // @ts-nocheck
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { createStrictIpcEndpoint } from "shared-ipc";
 import { createGameIpc, selectGameIpcMode } from "./game-ipc.js";
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+
+function createTestWorkerEndpoint(data, port, options) {
+	const pageSequenceStart = 41;
+	const workerSequenceStart = 73;
+	port.postMessage([1, pageSequenceStart, workerSequenceStart]);
+	return createStrictIpcEndpoint(port, {
+		...options,
+		channelId: data[1],
+		receiveSequenceStart: pageSequenceStart,
+		sendSequenceStart: workerSequenceStart
+	});
+}
 
 describe("game IPC mode selection", () => {
 	test("requires strict mode for every spelling of the official origin", () => {
@@ -27,8 +39,7 @@ describe("page game IPC adapter", () => {
 				expect(data[0]).toBe(1);
 				expect(data[1]).toMatch(/^[0-9a-f]{32}$/);
 				expect(ports).toHaveLength(1);
-				workerEndpoint = createStrictIpcEndpoint(ports[0], {
-					channelId: data[1],
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
 					incoming: new Map([[0, {
 						kind: "message",
 						validate: value => Array.isArray(value) && value.length === 5,
@@ -92,8 +103,7 @@ describe("page game IPC adapter", () => {
 		const worker = {
 			postMessage(data, ports) {
 				bootstrapMessages.push(data);
-				workerEndpoint = createStrictIpcEndpoint(ports[0], {
-					channelId: data[1],
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
 					incoming: new Map([[2, {
 						kind: "message",
 						validate: () => true,
@@ -137,8 +147,7 @@ describe("page game IPC adapter", () => {
 		const lifecycle = [];
 		const worker = {
 			postMessage(data, ports) {
-				workerEndpoint = createStrictIpcEndpoint(ports[0], {
-					channelId: data[1],
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
 					incoming: new Map([[2, {
 						kind: "message",
 						validate: () => true,
@@ -189,8 +198,7 @@ describe("page game IPC adapter", () => {
 		let closes = 0;
 		const worker = {
 			postMessage(data, ports) {
-				workerEndpoint = createStrictIpcEndpoint(ports[0], {
-					channelId: data[1],
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
 					incoming: new Map(),
 					outgoing: new Map([[0, {
 						kind: "message",
@@ -229,8 +237,7 @@ describe("page game IPC adapter", () => {
 		const worker = {
 			postMessage(data, ports) {
 				bootstrapMessages.push(data);
-				workerEndpoint = createStrictIpcEndpoint(ports[0], {
-					channelId: data[1],
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
 					incoming: new Map([[1, {
 						kind: "message",
 						validate: value => value === undefined,
@@ -282,6 +289,85 @@ describe("page game IPC adapter", () => {
 		expect(terminated).toBe(true);
 	});
 
+	test("fails closed on a malformed worker sequence bootstrap", async () => {
+		let terminated = false;
+		const worker = {
+			postMessage(data, ports) {
+				ports[0].postMessage([1, 0]);
+			},
+			terminate() { terminated = true; }
+		};
+
+		await expect(createGameIpc(
+			worker,
+			"wss://server.rplace.live",
+			"wss://server.rplace.live",
+			100
+		)).rejects.toThrow("Game IPC bootstrap failed");
+		expect(terminated).toBe(true);
+	});
+
+	test("terminates an official connection on worker sequence interference", async () => {
+		let workerEndpoint;
+		let workerPort;
+		let channelId;
+		let terminated = 0;
+		const disconnects = [];
+		const worker = {
+			postMessage(data, ports) {
+				channelId = data[1];
+				workerPort = ports[0];
+				workerEndpoint = createTestWorkerEndpoint(data, workerPort, {
+					incoming: new Map([[2, {
+						kind: "message",
+						validate: () => true,
+						handler: () => undefined
+					}]]),
+					outgoing: new Map([[0, {
+						kind: "message",
+						validate: value => value === undefined
+					}]])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() { terminated++; }
+		};
+		const ipc = await createGameIpc(
+			worker,
+			"wss://server.rplace.live",
+			"wss://server.rplace.live",
+			100,
+			[
+				() => undefined,
+				value => { disconnects.push(value); },
+				() => undefined,
+				() => undefined,
+				() => undefined
+			]
+		);
+
+		ipc.connect("device", null);
+		await tick();
+		const warning = spyOn(console, "warn").mockImplementation(() => {
+			throw new Error("patched diagnostic");
+		});
+		workerPort.postMessage({
+			type: "message",
+			channel: channelId,
+			sequence: 75,
+			call: 0,
+			data: undefined
+		});
+		await tick();
+
+		expect(terminated).toBe(1);
+		expect(disconnects).toEqual([[1002, "Game IPC integrity failure"]]);
+		expect(warning).toHaveBeenCalledWith("Game IPC sequence integrity failure");
+		warning.mockRestore();
+		expect(() => ipc.putPixel(0, 0)).toThrow("Game IPC endpoint is closed");
+		workerEndpoint.dispose();
+	});
+
 	test("keeps legacy connect, activity and stop only in explicit custom-server mode", async () => {
 		const messages = [];
 		const worker = {
@@ -325,8 +411,7 @@ describe("page game IPC adapter", () => {
 		const events = [];
 		const worker = {
 			postMessage(data, ports) {
-				workerEndpoint = createStrictIpcEndpoint(ports[0], {
-					channelId: data[1],
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
 					incoming: new Map([
 						[2, {
 							kind: "message",
@@ -400,8 +485,7 @@ describe("page game IPC adapter", () => {
 		let captchaEvents = 0;
 		const worker = {
 			postMessage(data, ports) {
-				workerEndpoint = createStrictIpcEndpoint(ports[0], {
-					channelId: data[1],
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
 					incoming: new Map([[2, {
 						kind: "message",
 						validate: () => true,
@@ -447,8 +531,7 @@ describe("page game IPC adapter", () => {
 		const placements = [];
 		const worker = {
 			postMessage(data, ports) {
-				workerEndpoint = createStrictIpcEndpoint(ports[0], {
-					channelId: data[1],
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
 					incoming: new Map([
 						[2, {
 							kind: "message",
