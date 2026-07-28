@@ -138,6 +138,13 @@ function isPlaceChatDelivery(value) {
 		isUint32(value[2]) && typeof value[3] === "string";
 }
 
+function isPunishment(value) {
+	return Array.isArray(value) && value.length === 5 &&
+		Number.isInteger(value[0]) && value[0] >= 0 && value[0] <= 3 &&
+		isTimestamp(value[1]) && isTimestamp(value[2]) &&
+		typeof value[3] === "string" && typeof value[4] === "string";
+}
+
 function isTimestamp(value) {
 	return Number.isSafeInteger(value) && value >= 0 && value <= MAX_DATE_MS;
 }
@@ -230,6 +237,7 @@ export async function createGameIpc(
 	officialServer,
 	bootstrapTimeoutMs = 5_000,
 	eventHandlers = [
+		() => undefined,
 		() => undefined,
 		() => undefined,
 		() => undefined,
@@ -560,6 +568,10 @@ export async function createGameIpc(
 		kind: "message",
 		validate: value => connectionState === 2 && isPlaceChatDelivery(value),
 		handler: value => { eventHandlers[25](value); }
+	}], [27, {
+		kind: "message",
+		validate: value => connectionState === 2 && isPunishment(value),
+		handler: value => { eventHandlers[26](value); }
 	}]]);
 	/** @type {Map<number, import("shared-ipc").StrictOutgoingCommand>} */
 	const outgoing = new Map([[0, {

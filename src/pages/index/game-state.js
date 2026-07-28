@@ -126,7 +126,8 @@ const gameIpc = await createGameIpc(
 		handleChatDelete,
 		handleChatReaction,
 		handleLiveChat,
-		handlePlaceChat
+		handlePlaceChat,
+		handlePunishment
 	]
 );
 wsCapsule.addEventListener("message", handleIpcMessage);
@@ -459,13 +460,21 @@ function handleChatReaction(/**@type {[number,number,string]}*/[messageId, react
 	window.dispatchEvent(liveChatReactionEvent);
 }
 addIpcMessageHandler("handleLiveChatReaction", handleChatReaction);
-addIpcMessageHandler("applyPunishment", (/**@type {ModerationInfo}*/info) => {
+function handlePunishment(/**@type {[number,number,number,string,string]}*/[
+	state, startDate, endDate, reason, appeal
+]) {
+	const info = { state, startDate, endDate, reason, appeal };
 	const punishmentEvent = new CustomEvent("punishment", {
 		detail: info,
 		bubbles: true,
 		composed: true
 	});
 	window.dispatchEvent(punishmentEvent);
+}
+addIpcMessageHandler("applyPunishment", (/**@type {ModerationInfo}*/info) => {
+	handlePunishment([
+		info.state, info.startDate, info.endDate, info.reason, info.appeal
+	]);
 });
 addIpcMessageHandler("handleChallenge", async (/**@type {[string,string]}*/[source, input]) => {
 	const result = await Object.getPrototypeOf(async function () { })

@@ -1081,4 +1081,38 @@ describe("page game IPC adapter", () => {
 		ipc.dispose();
 		workerEndpoint.dispose();
 	});
+
+	test("privately validates strict punishment notifications", async () => {
+		let workerEndpoint;
+		const received = [];
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
+					incoming: new Map([
+						[2, { kind: "message", validate: () => true, handler: () => workerEndpoint.send(1) }]
+					]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }],
+						[27, { kind: "message", validate: () => true }]
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() { throw new Error("strict punishment unexpectedly terminated"); }
+		};
+		const handlers = Array.from({ length: 27 }, () => () => undefined);
+		handlers[26] = value => received.push(value);
+		const ipc = await createGameIpc(
+			worker, "wss://server.rplace.live", "wss://server.rplace.live", 100, handlers
+		);
+		ipc.connect("device", null);
+		await tick();
+		workerEndpoint.send(27, [3, 1000, 2000, "reason", "appeal"]);
+		workerEndpoint.send(27, [4, 1000, 2000, "reason", "appeal"]);
+		await tick();
+		expect(received).toEqual([[3, 1000, 2000, "reason", "appeal"]]);
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
 });
