@@ -73,6 +73,7 @@ describe("page game IPC adapter", () => {
 		expect(Reflect.ownKeys(ipc).sort()).toEqual([
 			"connect",
 			"dispose",
+			"putPixel",
 			"reportAutomatedActivity",
 			"sendCaptchaResult",
 			"stop"
@@ -291,6 +292,7 @@ describe("page game IPC adapter", () => {
 		ipc.connect("custom-device", null);
 		ipc.reportAutomatedActivity([1, 2, 3, 4, 5]);
 		ipc.sendCaptchaResult(7, "answer");
+		ipc.putPixel(9, 3);
 		ipc.stop();
 		ipc.stop();
 
@@ -308,8 +310,12 @@ describe("page game IPC adapter", () => {
 			call: "sendCaptchaResult",
 			data: { captchaId: 7, result: "answer" }
 		});
-		expect(messages[3]).toMatchObject({ call: "stop", data: undefined });
-		expect(messages).toHaveLength(4);
+		expect(messages[3]).toMatchObject({
+			call: "putPixel",
+			data: { position: 9, colour: 3 }
+		});
+		expect(messages[4]).toMatchObject({ call: "stop", data: undefined });
+		expect(messages).toHaveLength(5);
 		expect(() => ipc.reportAutomatedActivity([1, 2, 3, 4, 5])).toThrow();
 	});
 
@@ -432,6 +438,57 @@ describe("page game IPC adapter", () => {
 		await tick();
 
 		expect(captchaEvents).toBe(0);
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
+
+	test("sends only exact open-state strict pixel placements", async () => {
+		let workerEndpoint;
+		const placements = [];
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createStrictIpcEndpoint(ports[0], {
+					channelId: data[1],
+					incoming: new Map([
+						[2, {
+							kind: "message",
+							validate: () => true,
+							handler: () => { workerEndpoint.send(1); }
+						}],
+						[4, {
+							kind: "message",
+							validate: () => true,
+							handler: value => { placements.push(value); }
+						}]
+					]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }]
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() {
+				throw new Error("strict bootstrap unexpectedly failed");
+			}
+		};
+		const ipc = await createGameIpc(
+			worker,
+			"wss://server.rplace.live",
+			"wss://server.rplace.live",
+			100
+		);
+
+		expect(() => ipc.putPixel(0, 0)).toThrow();
+		ipc.connect("device", null);
+		await tick();
+		expect(() => ipc.putPixel(-1, 0)).toThrow();
+		expect(() => ipc.putPixel(0, 256)).toThrow();
+		expect(() => ipc.putPixel(0.5, 0)).toThrow();
+		ipc.putPixel(0xFFFF_FFFF, 255);
+		await tick();
+
+		expect(placements).toEqual([[0xFFFF_FFFF, 255]]);
 		ipc.dispose();
 		workerEndpoint.dispose();
 	});

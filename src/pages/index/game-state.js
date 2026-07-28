@@ -468,6 +468,18 @@ export function sendServerMessage(name, args=undefined, event=undefined) {
 	sendIpcMessage(wsCapsule, name, args);
 }
 
+/**
+ * @param {number} position
+ * @param {number} colour
+ * @param {Event} event
+ */
+export function placePixel(position, colour, event) {
+	if (!(event instanceof Event) || !event.isTrusted) {
+		throw new Error("Trusted pixel placement event was invalid");
+	}
+	gameIpc.putPixel(position, colour);
+}
+
 export function setDefaultCaptchaHandlers(handleText, handleEmoji, handleSuccess) {
 	if (defaultCaptchaHandlers) {
 		throw new Error("Default CAPTCHA handlers are already registered");

@@ -3,7 +3,7 @@ import { createStrictIpcEndpoint, sendIpcMessage } from "shared-ipc";
 /** @typedef {[number, number, number, number, number]} ClientActivity */
 /** @typedef {[string, string, string|null]} ConnectArgs */
 /** @typedef {[number, string[], Uint8Array]} DefaultCaptchaChallenge */
-/** @typedef {{ connect: (device: string, vip: string|null) => void, reportAutomatedActivity: (activity: ClientActivity) => void, sendCaptchaResult: (captchaId: number, result: string) => void, stop: () => void, dispose: () => void }} GameIpc */
+/** @typedef {{ connect: (device: string, vip: string|null) => void, putPixel: (position: number, colour: number) => void, reportAutomatedActivity: (activity: ClientActivity) => void, sendCaptchaResult: (captchaId: number, result: string) => void, stop: () => void, dispose: () => void }} GameIpc */
 
 /** @param {*} activity */
 function isClientActivity(activity) {
@@ -50,6 +50,12 @@ function isDefaultCaptchaResult(value) {
 	return Array.isArray(value) && value.length === 2 &&
 		Number.isInteger(value[0]) && value[0] >= 0 && value[0] <= 255 &&
 		typeof value[1] === "string" && value[1].length > 0;
+}
+
+function isPixelPlacement(value) {
+	return Array.isArray(value) && value.length === 2 &&
+		Number.isInteger(value[0]) && value[0] >= 0 && value[0] <= 0xFFFF_FFFF &&
+		Number.isInteger(value[1]) && value[1] >= 0 && value[1] <= 255;
 }
 
 function createChannelId() {
@@ -129,6 +135,15 @@ export async function createGameIpc(
 				sendIpcMessage(/** @type {Worker} */(worker), "sendCaptchaResult", {
 					captchaId,
 					result
+				});
+			},
+			putPixel(position, colour) {
+				if (disposed) {
+					throw new Error("Game IPC endpoint is closed");
+				}
+				sendIpcMessage(/** @type {Worker} */(worker), "putPixel", {
+					position,
+					colour
 				});
 			},
 			stop() {
@@ -223,6 +238,9 @@ export async function createGameIpc(
 	}], [3, {
 		kind: "message",
 		validate: isDefaultCaptchaResult
+	}], [4, {
+		kind: "message",
+		validate: isPixelPlacement
 	}]]);
 	const endpoint = createStrictIpcEndpoint(channel.port1, {
 		channelId,
@@ -290,6 +308,16 @@ export async function createGameIpc(
 			outstandingCaptchas.delete(captchaId);
 			pendingCaptcha = captchaId;
 			endpoint.send(3, value);
+		},
+		putPixel(position, colour) {
+			if (disposed) {
+				throw new Error("Game IPC endpoint is closed");
+			}
+			const value = [position, colour];
+			if (connectionState !== 2 || !isPixelPlacement(value)) {
+				throw new Error("Pixel placement is not valid");
+			}
+			endpoint.send(4, value);
 		},
 		stop() {
 			if (disposed) {

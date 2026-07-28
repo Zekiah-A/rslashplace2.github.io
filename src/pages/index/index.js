@@ -11,7 +11,7 @@ import { addIpcMessageHandler, handleIpcMessage, sendIpcMessage, makeIpcRequest 
 import { openOverlayMenu } from "./overlay-menu.js";
 import { TurnstileWidget } from "../../services/turnstile-manager.js";
 import { theme } from "./game-themes.js";
-import { BOARD, canvasLocked, CHANGES, chatName, connectStatus, COOLDOWN, cooldownEndDate, HEIGHT, intId, intIdNames, intIdPositions, onCooldown, PALETTE, PALETTE_USABLE_REGION, passkeyAuthState, placementMode, RAW_BOARD, setCooldown, setPasskeyAuthState, SOCKET_PIXELS, WIDTH, sendDefaultCaptchaResult, sendServerMessage, setDefaultCaptchaHandlers, makeServerRequest, connect } from "./game-state.js";
+import { BOARD, canvasLocked, CHANGES, chatName, connectStatus, COOLDOWN, cooldownEndDate, HEIGHT, intId, intIdNames, intIdPositions, onCooldown, PALETTE, PALETTE_USABLE_REGION, passkeyAuthState, placementMode, RAW_BOARD, setCooldown, setPasskeyAuthState, SOCKET_PIXELS, WIDTH, placePixel, sendDefaultCaptchaResult, sendServerMessage, setDefaultCaptchaHandlers, makeServerRequest, connect } from "./game-state.js";
 import { generateIndicators, generatePalette, hideIndicators, showPalette } from "./palette.js";
 import { authenticatePasskey, getPasskeyStatus, registerPasskey, supportsPasskeys } from "./passkeys.js";
 import "./popup.js";
@@ -1079,7 +1079,7 @@ function handlePixelPlace(e) {
 	}
 	// Send place to websocket
 	const position = Math.floor(x) + Math.floor(y) * WIDTH;
-	sendServerMessage("putPixel", { position, colour: selectedColour }, e);
+	placePixel(position, selectedColour, e);
 
 	// We client-side predict our new cooldown and pixel place the pixel went through
 	// TODO: Note client-server latency will make real cooldown a little bigger
