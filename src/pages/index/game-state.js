@@ -673,6 +673,12 @@ export function sendDefaultCaptchaResult(captchaId, result) {
  * @param {any} [args]
  */
 export async function makeServerRequest(call, args=undefined) {
+	if (call === "fetchLinkKey") {
+		return await gameIpc.fetchLinkKey();
+	}
+	if (call === "sendModAction") {
+		return await gameIpc.sendModAction(args);
+	}
 	return await makeIpcRequest(wsCapsule, call, args);
 }
 

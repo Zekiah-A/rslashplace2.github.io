@@ -86,6 +86,7 @@ describe("page game IPC adapter", () => {
 			"chatReport",
 			"connect",
 			"dispose",
+			"fetchLinkKey",
 			"putPixel",
 			"reportAutomatedActivity",
 			"requestChatHistory",
@@ -94,6 +95,7 @@ describe("page game IPC adapter", () => {
 			"sendChallengeResult",
 			"sendHCaptchaResult",
 			"sendLiveChat",
+			"sendModAction",
 			"sendPlaceChat",
 			"sendTurnstileResult",
 			"setName",
@@ -1290,6 +1292,51 @@ describe("page game IPC adapter", () => {
 		await tick();
 		expect(requests).toEqual([[7, 3, 5]]);
 		expect(responses).toHaveLength(1);
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
+
+	test("uses strict requests for link keys and closed moderation input", async () => {
+		let workerEndpoint;
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
+					incoming: new Map([
+						[2, { kind: "message", validate: () => true, handler: () => workerEndpoint.send(1) }],
+						[17, {
+							kind: "request",
+							validate: value => value === undefined,
+							validateResult: () => true,
+							handler: async () => ["key", 7]
+						}],
+						[18, {
+							kind: "request",
+							validate: () => true,
+							validateResult: () => true,
+							handler: () => "Use HTTP moderation API"
+						}]
+					]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }]
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() { throw new Error("strict request unexpectedly terminated"); }
+		};
+		const ipc = await createGameIpc(
+			worker, "wss://server.rplace.live", "wss://server.rplace.live", 100
+		);
+		ipc.connect("device", null);
+		await tick();
+		expect(await ipc.fetchLinkKey()).toEqual({ linkKey: "key", instanceId: 7 });
+		expect(await ipc.sendModAction({
+			action: "kick", memberId: 9, reason: "reason"
+		})).toBe("Use HTTP moderation API");
+		await expect(ipc.sendModAction({
+			action: "kick", memberId: -1, reason: ""
+		})).rejects.toThrow();
 		ipc.dispose();
 		workerEndpoint.dispose();
 	});
