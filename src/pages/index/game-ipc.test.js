@@ -1340,4 +1340,44 @@ describe("page game IPC adapter", () => {
 		ipc.dispose();
 		workerEndpoint.dispose();
 	});
+
+	test("privately validates exact strict viewport policy", async () => {
+		let workerEndpoint;
+		const received = [];
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
+					incoming: new Map([[
+						2,
+						{
+							kind: "message",
+							validate: () => true,
+							handler: () => workerEndpoint.send(1)
+						}
+					]]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }],
+						[35, { kind: "message", validate: () => true }]
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() { throw new Error("strict viewport unexpectedly terminated"); }
+		};
+		const handlers = Array.from({ length: 35 }, () => () => undefined);
+		handlers[34] = value => received.push(value);
+		const ipc = await createGameIpc(
+			worker, "wss://server.rplace.live", "wss://server.rplace.live", 100, handlers
+		);
+		ipc.connect("device", null);
+		await tick();
+		workerEndpoint.send(35, [3, 2]);
+		workerEndpoint.send(35, [4, 0]);
+		workerEndpoint.send(35, [0, 3]);
+		await tick();
+		expect(received).toEqual([[3, 2]]);
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
 });

@@ -68,6 +68,9 @@ export let COOLDOWN = DEFAULT_COOLDOWN;
 /**@type {boolean}*/export let canvasLocked = false;
 /**@type {"not-required"|"required"|"completed"|"failed"|"unsupported"}*/export let passkeyAuthState = "not-required";
 /**@type {PLACEMENT_MODE}*/export let placementMode = PLACEMENT_MODE.selectPixel;
+export function setPlacementMode(value) {
+	placementMode = value;
+}
 /**@type {Set<number>}*/export const spectators = new Set(); // Spectator int Id
 /**@type {number|null}*/export let spectatingIntId = null;
 
@@ -134,7 +137,11 @@ const gameIpc = await createGameIpc(
 		() => dispatchSecurityEvent("turnstilesuccess"),
 		value => dispatchSecurityEvent("hcaptchachallenge", value),
 		() => dispatchSecurityEvent("hcaptchasuccess"),
-		handlePlacerRegion
+		handlePlacerRegion,
+		value => {
+			setPlacementMode(value[1]);
+			dispatchSecurityEvent("clientviewport", value);
+		}
 	]
 );
 wsCapsule.addEventListener("message", handleIpcMessage);

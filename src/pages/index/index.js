@@ -11,7 +11,7 @@ import { addIpcMessageHandler, handleIpcMessage, sendIpcMessage, makeIpcRequest 
 import { openOverlayMenu } from "./overlay-menu.js";
 import { TurnstileWidget } from "../../services/turnstile-manager.js";
 import { theme } from "./game-themes.js";
-import { BOARD, canvasLocked, CHANGES, chatName, connectStatus, COOLDOWN, cooldownEndDate, HEIGHT, intId, intIdNames, intIdPositions, onCooldown, PALETTE, PALETTE_USABLE_REGION, passkeyAuthState, placementMode, RAW_BOARD, setCooldown, setPasskeyAuthState, SOCKET_PIXELS, WIDTH, placePixel, sendDefaultCaptchaResult, sendServerMessage, setDefaultCaptchaHandlers, makeServerRequest, connect } from "./game-state.js";
+import { BOARD, canvasLocked, CHANGES, chatName, connectStatus, COOLDOWN, cooldownEndDate, HEIGHT, intId, intIdNames, intIdPositions, onCooldown, PALETTE, PALETTE_USABLE_REGION, passkeyAuthState, placementMode, RAW_BOARD, setCooldown, setPasskeyAuthState, setPlacementMode, SOCKET_PIXELS, WIDTH, placePixel, sendDefaultCaptchaResult, sendServerMessage, setDefaultCaptchaHandlers, makeServerRequest, connect } from "./game-state.js";
 import { generateIndicators, generatePalette, hideIndicators, showPalette } from "./palette.js";
 import { authenticatePasskey, getPasskeyStatus, registerPasskey, supportsPasskeys } from "./passkeys.js";
 import "./popup.js";
@@ -1745,7 +1745,7 @@ addIpcMessageHandler("addLiveChatMessages", addLiveChatMessages);
 window.addEventListener("livechathistory", event => {
 	addLiveChatMessages(event.detail);
 });
-addIpcMessageHandler("handleClientViewport", (/**@type {[number, number]}*/[ boardRenderer, movementMode ]) => {
+function handleClientViewport(/**@type {[number, number]}*/[boardRenderer]) {
 	if (boardRenderer === RENDERER_TYPE.BoardRenderer3D) {
 		throw new Error("Not implemented");
 	}
@@ -1757,6 +1757,13 @@ addIpcMessageHandler("handleClientViewport", (/**@type {[number, number]}*/[ boa
 		setViewportRenderer(renderer);
 	}
 	renderAll();
+}
+addIpcMessageHandler("handleClientViewport", value => {
+	setPlacementMode(value[1]);
+	handleClientViewport(value);
+});
+window.addEventListener("clientviewport", event => {
+	handleClientViewport(event.detail);
 });
 addIpcMessageHandler("handleClientTheme", (/**@type {[string,string,string]}*/[id, variant, effects]) => {
 	throw new Error("Not implemented");

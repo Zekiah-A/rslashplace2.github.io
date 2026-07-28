@@ -214,6 +214,12 @@ function isPlacerRegion(value) {
 		value[3].byteLength === value[1] * value[2] * 4;
 }
 
+function isClientViewport(value) {
+	return Array.isArray(value) && value.length === 2 &&
+		Number.isInteger(value[0]) && value[0] >= 0 && value[0] <= 3 &&
+		Number.isInteger(value[1]) && value[1] >= 0 && value[1] <= 2;
+}
+
 function isLinkKey(value) {
 	return Array.isArray(value) && value.length === 2 &&
 		typeof value[0] === "string" && value[0].length > 0 &&
@@ -332,6 +338,7 @@ export async function createGameIpc(
 	officialServer,
 	bootstrapTimeoutMs = 5_000,
 	eventHandlers = [
+		() => undefined,
 		() => undefined,
 		() => undefined,
 		() => undefined,
@@ -789,6 +796,10 @@ export async function createGameIpc(
 			placerRequests.splice(requestIndex, 1);
 			eventHandlers[33](value);
 		}
+	}], [35, {
+		kind: "message",
+		validate: value => connectionState === 2 && isClientViewport(value),
+		handler: value => { eventHandlers[34](value); }
 	}]]);
 	/** @type {Map<number, import("shared-ipc").StrictOutgoingCommand>} */
 	const outgoing = new Map([[0, {
