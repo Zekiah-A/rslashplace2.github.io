@@ -94,12 +94,19 @@ const url = URL.createObjectURL(blob);
 const wsCapsule = new Worker(url, {
 	type: "module"
 });
+let defaultCaptchaHandlers;
 const gameIpc = await createGameIpc(
 	wsCapsule,
 	selectedServer,
 	DEFAULT_SERVER,
 	undefined,
-	[handleGameConnect, handleGameDisconnect]
+	[
+		handleGameConnect,
+		handleGameDisconnect,
+		value => defaultCaptchaHandlers?.[0](value),
+		value => defaultCaptchaHandlers?.[1](value),
+		() => defaultCaptchaHandlers?.[2]()
+	]
 );
 wsCapsule.addEventListener("message", handleIpcMessage);
 window.addEventListener("beforeunload", (e) => {
@@ -459,6 +466,17 @@ export function sendServerMessage(name, args=undefined, event=undefined) {
 	}
 
 	sendIpcMessage(wsCapsule, name, args);
+}
+
+export function setDefaultCaptchaHandlers(handleText, handleEmoji, handleSuccess) {
+	if (defaultCaptchaHandlers) {
+		throw new Error("Default CAPTCHA handlers are already registered");
+	}
+	defaultCaptchaHandlers = Object.freeze([handleText, handleEmoji, handleSuccess]);
+}
+
+export function sendDefaultCaptchaResult(captchaId, result) {
+	gameIpc.sendCaptchaResult(captchaId, result);
 }
 
 /**

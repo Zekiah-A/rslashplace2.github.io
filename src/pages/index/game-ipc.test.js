@@ -70,7 +70,13 @@ describe("page game IPC adapter", () => {
 
 		expect(received).toEqual([17, 1920, 1900, 1080, 1000]);
 		expect(() => ipc.reportAutomatedActivity([17, 1, 2, 3])).toThrow();
-		expect(Reflect.ownKeys(ipc).sort()).toEqual(["connect", "dispose", "reportAutomatedActivity", "stop"]);
+		expect(Reflect.ownKeys(ipc).sort()).toEqual([
+			"connect",
+			"dispose",
+			"reportAutomatedActivity",
+			"sendCaptchaResult",
+			"stop"
+		]);
 		ipc.dispose();
 		ipc.stop();
 		await tick();
@@ -284,6 +290,7 @@ describe("page game IPC adapter", () => {
 
 		ipc.connect("custom-device", null);
 		ipc.reportAutomatedActivity([1, 2, 3, 4, 5]);
+		ipc.sendCaptchaResult(7, "answer");
 		ipc.stop();
 		ipc.stop();
 
@@ -297,8 +304,135 @@ describe("page game IPC adapter", () => {
 		});
 		expect(messages[1].call).toBe("informAutomatedActivity");
 		expect(messages[1].data).toEqual([1, 2, 3, 4, 5]);
-		expect(messages[2]).toMatchObject({ call: "stop", data: undefined });
-		expect(messages).toHaveLength(3);
+		expect(messages[2]).toMatchObject({
+			call: "sendCaptchaResult",
+			data: { captchaId: 7, result: "answer" }
+		});
+		expect(messages[3]).toMatchObject({ call: "stop", data: undefined });
+		expect(messages).toHaveLength(4);
 		expect(() => ipc.reportAutomatedActivity([1, 2, 3, 4, 5])).toThrow();
+	});
+
+	test("validates strict default CAPTCHA challenges and permits one correlated answer", async () => {
+		let workerEndpoint;
+		const answers = [];
+		const events = [];
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createStrictIpcEndpoint(ports[0], {
+					channelId: data[1],
+					incoming: new Map([
+						[2, {
+							kind: "message",
+							validate: () => true,
+							handler: () => { workerEndpoint.send(1); }
+						}],
+						[3, {
+							kind: "message",
+							validate: () => true,
+							handler: value => { answers.push(value); }
+						}]
+					]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }],
+						[3, { kind: "message", validate: () => true }],
+						[4, { kind: "message", validate: () => true }],
+						[5, { kind: "message", validate: () => true }]
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() {
+				throw new Error("strict bootstrap unexpectedly failed");
+			}
+		};
+		const ipc = await createGameIpc(
+			worker,
+			"wss://server.rplace.live",
+			"wss://server.rplace.live",
+			100,
+			[
+				() => { events.push("open"); },
+				() => undefined,
+				value => { events.push(["text", value]); },
+				value => { events.push(["emoji", value]); },
+				() => { events.push("success"); }
+			]
+		);
+		ipc.connect("device", null);
+		await tick();
+		const image = new Uint8Array([1, 2]);
+		workerEndpoint.send(3, [7, ["one", "two"], image]);
+		workerEndpoint.send(4, [8, ["😀"], image]);
+		await tick();
+
+		expect(() => ipc.sendCaptchaResult(9, "unknown")).toThrow();
+		expect(() => ipc.sendCaptchaResult(7, "")).toThrow();
+		ipc.sendCaptchaResult(7, "one");
+		expect(() => ipc.sendCaptchaResult(8, "😀")).toThrow();
+		await tick();
+		workerEndpoint.send(5);
+		await tick();
+		ipc.sendCaptchaResult(8, "😀");
+		expect(() => ipc.sendCaptchaResult(8, "😀")).toThrow();
+		await tick();
+
+		expect(answers).toEqual([[7, "one"], [8, "😀"]]);
+		expect(events).toEqual([
+			"open",
+			["text", [7, ["one", "two"], image]],
+			["emoji", [8, ["😀"], image]],
+			"success"
+		]);
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
+
+	test("rejects malformed strict default CAPTCHA events before page handlers", async () => {
+		let workerEndpoint;
+		let captchaEvents = 0;
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createStrictIpcEndpoint(ports[0], {
+					channelId: data[1],
+					incoming: new Map([[2, {
+						kind: "message",
+						validate: () => true,
+						handler: () => { workerEndpoint.send(1); }
+					}]]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }],
+						[3, { kind: "message", validate: () => true }]
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() {
+				throw new Error("strict bootstrap unexpectedly failed");
+			}
+		};
+		const ipc = await createGameIpc(
+			worker,
+			"wss://server.rplace.live",
+			"wss://server.rplace.live",
+			100,
+			[
+				() => undefined,
+				() => undefined,
+				() => { captchaEvents++; },
+				() => { captchaEvents++; },
+				() => { captchaEvents++; }
+			]
+		);
+		ipc.connect("device", null);
+		await tick();
+		workerEndpoint.send(3, [7, ["answer"], new ArrayBuffer(1)]);
+		await tick();
+
+		expect(captchaEvents).toBe(0);
+		ipc.dispose();
+		workerEndpoint.dispose();
 	});
 });

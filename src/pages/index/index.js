@@ -11,7 +11,7 @@ import { addIpcMessageHandler, handleIpcMessage, sendIpcMessage, makeIpcRequest 
 import { openOverlayMenu } from "./overlay-menu.js";
 import { TurnstileWidget } from "../../services/turnstile-manager.js";
 import { theme } from "./game-themes.js";
-import { BOARD, canvasLocked, CHANGES, chatName, connectStatus, COOLDOWN, cooldownEndDate, HEIGHT, intId, intIdNames, intIdPositions, onCooldown, PALETTE, PALETTE_USABLE_REGION, passkeyAuthState, placementMode, RAW_BOARD, setCooldown, setPasskeyAuthState, SOCKET_PIXELS, WIDTH, sendServerMessage, makeServerRequest, connect } from "./game-state.js";
+import { BOARD, canvasLocked, CHANGES, chatName, connectStatus, COOLDOWN, cooldownEndDate, HEIGHT, intId, intIdNames, intIdPositions, onCooldown, PALETTE, PALETTE_USABLE_REGION, passkeyAuthState, placementMode, RAW_BOARD, setCooldown, setPasskeyAuthState, SOCKET_PIXELS, WIDTH, sendDefaultCaptchaResult, sendServerMessage, setDefaultCaptchaHandlers, makeServerRequest, connect } from "./game-state.js";
 import { generateIndicators, generatePalette, hideIndicators, showPalette } from "./palette.js";
 import { authenticatePasskey, getPasskeyStatus, registerPasskey, supportsPasskeys } from "./passkeys.js";
 import "./popup.js";
@@ -514,7 +514,7 @@ window.addEventListener("livechatreaction", (/**@type {Event}*/e) => {
 	}
 });
 
-addIpcMessageHandler("handleTextCaptcha", (/**@type {[number,string[],Uint8Array]}*/[ captchaId, options, imageData ]) => {
+function handleTextCaptcha(/**@type {[number,string[],Uint8Array]}*/[ captchaId, options, imageData ]) {
 	captchaOptions.innerHTML = ""
 
 	let captchaSubmitted = false
@@ -528,7 +528,7 @@ addIpcMessageHandler("handleTextCaptcha", (/**@type {[number,string[],Uint8Array
 				return console.error("Could not send captcha response. No text?")
 			}
 			captchaSubmitted = true;
-			sendServerMessage("sendCaptchaResult", { captchaId, result: text });
+			sendDefaultCaptchaResult(captchaId, text);
 			captchaOptions.style.pointerEvents = "none";
 		})
 	}
@@ -542,8 +542,9 @@ addIpcMessageHandler("handleTextCaptcha", (/**@type {[number,string[],Uint8Array
 	else {
 		updateImgCaptchaCanvasFallback(imageBlob)
 	}
-});
-addIpcMessageHandler("handleEmojiCaptcha", (/**@type {[number,string[],Uint8Array]}*/[captchaId, options, imageData]) => {
+}
+addIpcMessageHandler("handleTextCaptcha", handleTextCaptcha);
+function handleEmojiCaptcha(/**@type {[number,string[],Uint8Array]}*/[captchaId, options, imageData]) {
 	captchaOptions.innerHTML = "";
 
 	let captchaSubmitted = false;
@@ -567,7 +568,7 @@ addIpcMessageHandler("handleEmojiCaptcha", (/**@type {[number,string[],Uint8Arra
 				return console.error("Could not send captcha response. No emoji?")
 			}
 			captchaSubmitted = true;
-			sendServerMessage("sendCaptchaResult", { captchaId, result: emoji });
+			sendDefaultCaptchaResult(captchaId, emoji);
 			captchaOptions.style.pointerEvents = "none";
 			clearCaptchaCanvas();
 		}
@@ -586,10 +587,13 @@ addIpcMessageHandler("handleEmojiCaptcha", (/**@type {[number,string[],Uint8Arra
 	else {
 		updateImgCaptchaCanvasFallback(imageBlob);
 	}
-});
-addIpcMessageHandler("handleCaptchaSuccess", () => {
+}
+addIpcMessageHandler("handleEmojiCaptcha", handleEmojiCaptcha);
+function handleCaptchaSuccess() {
 	captchaPopup.close();
-});
+}
+addIpcMessageHandler("handleCaptchaSuccess", handleCaptchaSuccess);
+setDefaultCaptchaHandlers(handleTextCaptcha, handleEmojiCaptcha, handleCaptchaSuccess);
 addIpcMessageHandler("handleTurnstile", /**@type {[number,string]}*/([captchaId, siteKey]) => {
 	const siteVariant = document.documentElement.dataset.variant;
 	const turnstileTheme = siteVariant === "dark" ? "dark" : "light";

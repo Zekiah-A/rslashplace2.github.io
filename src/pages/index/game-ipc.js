@@ -2,7 +2,8 @@ import { createStrictIpcEndpoint, sendIpcMessage } from "shared-ipc";
 
 /** @typedef {[number, number, number, number, number]} ClientActivity */
 /** @typedef {[string, string, string|null]} ConnectArgs */
-/** @typedef {{ connect: (device: string, vip: string|null) => void, reportAutomatedActivity: (activity: ClientActivity) => void, stop: () => void, dispose: () => void }} GameIpc */
+/** @typedef {[number, string[], Uint8Array]} DefaultCaptchaChallenge */
+/** @typedef {{ connect: (device: string, vip: string|null) => void, reportAutomatedActivity: (activity: ClientActivity) => void, sendCaptchaResult: (captchaId: number, result: string) => void, stop: () => void, dispose: () => void }} GameIpc */
 
 /** @param {*} activity */
 function isClientActivity(activity) {
@@ -38,6 +39,19 @@ function isDisconnect(value) {
 		typeof value[1] === "string";
 }
 
+function isDefaultCaptchaChallenge(value) {
+	return Array.isArray(value) && value.length === 3 &&
+		Number.isInteger(value[0]) && value[0] >= 0 && value[0] <= 255 &&
+		Array.isArray(value[1]) && value[1].every(option => typeof option === "string") &&
+		value[2] instanceof Uint8Array;
+}
+
+function isDefaultCaptchaResult(value) {
+	return Array.isArray(value) && value.length === 2 &&
+		Number.isInteger(value[0]) && value[0] >= 0 && value[0] <= 255 &&
+		typeof value[1] === "string" && value[1].length > 0;
+}
+
 function createChannelId() {
 	const bytes = crypto.getRandomValues(new Uint8Array(16));
 	return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
@@ -64,7 +78,7 @@ export function selectGameIpcMode(server, officialServer) {
  * @param {string} server
  * @param {string} officialServer
  * @param {number} [bootstrapTimeoutMs]
- * @param {[() => void, (value: [number, string]) => void]} [lifecycleHandlers]
+ * @param {[() => void, (value: [number, string]) => void, (value: DefaultCaptchaChallenge) => void, (value: DefaultCaptchaChallenge) => void, () => void]} [eventHandlers]
  * @returns {Promise<GameIpc>}
  */
 export async function createGameIpc(
@@ -72,7 +86,13 @@ export async function createGameIpc(
 	server,
 	officialServer,
 	bootstrapTimeoutMs = 5_000,
-	lifecycleHandlers = [() => undefined, () => undefined]
+	eventHandlers = [
+		() => undefined,
+		() => undefined,
+		() => undefined,
+		() => undefined,
+		() => undefined
+	]
 ) {
 	const mode = selectGameIpcMode(server, officialServer);
 	if (mode === "legacy") {
@@ -102,6 +122,15 @@ export async function createGameIpc(
 				}
 				sendIpcMessage(/** @type {Worker} */(worker), "informAutomatedActivity", activity);
 			},
+			sendCaptchaResult(captchaId, result) {
+				if (disposed) {
+					throw new Error("Game IPC endpoint is closed");
+				}
+				sendIpcMessage(/** @type {Worker} */(worker), "sendCaptchaResult", {
+					captchaId,
+					result
+				});
+			},
 			stop() {
 				if (disposed) {
 					return;
@@ -123,6 +152,8 @@ export async function createGameIpc(
 	let disposed = false;
 	// 0 = port-bound, 1 = connecting, 2 = open, 3 = closed.
 	let connectionState = 0;
+	const outstandingCaptchas = new Set();
+	let pendingCaptcha = null;
 	/** @type {(() => void)|undefined} */
 	let markReady;
 	/** @type {Promise<void>} */
@@ -140,7 +171,7 @@ export async function createGameIpc(
 		validate: value => connectionState === 1 && value === undefined,
 		handler: () => {
 			connectionState = 2;
-			lifecycleHandlers[0]();
+			eventHandlers[0]();
 		}
 	}], [2, {
 		kind: "message",
@@ -149,11 +180,34 @@ export async function createGameIpc(
 			connectionState = 3;
 			disposed = true;
 			try {
-				lifecycleHandlers[1](value);
+				eventHandlers[1](value);
 			}
 			finally {
 				endpoint.dispose();
 			}
+		}
+	}], [3, {
+		kind: "message",
+		validate: value => connectionState === 2 && isDefaultCaptchaChallenge(value) &&
+			!outstandingCaptchas.has(value[0]) && pendingCaptcha !== value[0],
+		handler: value => {
+			outstandingCaptchas.add(value[0]);
+			eventHandlers[2](value);
+		}
+	}], [4, {
+		kind: "message",
+		validate: value => connectionState === 2 && isDefaultCaptchaChallenge(value) &&
+			!outstandingCaptchas.has(value[0]) && pendingCaptcha !== value[0],
+		handler: value => {
+			outstandingCaptchas.add(value[0]);
+			eventHandlers[3](value);
+		}
+	}], [5, {
+		kind: "message",
+		validate: value => connectionState === 2 && pendingCaptcha !== null && value === undefined,
+		handler: () => {
+			pendingCaptcha = null;
+			eventHandlers[4]();
 		}
 	}]]);
 	/** @type {Map<number, import("shared-ipc").StrictOutgoingCommand>} */
@@ -166,6 +220,9 @@ export async function createGameIpc(
 	}], [2, {
 		kind: "message",
 		validate: isConnectArgs
+	}], [3, {
+		kind: "message",
+		validate: isDefaultCaptchaResult
 	}]]);
 	const endpoint = createStrictIpcEndpoint(channel.port1, {
 		channelId,
@@ -220,6 +277,19 @@ export async function createGameIpc(
 				throw new Error("Game IPC connection is not open");
 			}
 			endpoint.send(0, activity);
+		},
+		sendCaptchaResult(captchaId, result) {
+			if (disposed) {
+				throw new Error("Game IPC endpoint is closed");
+			}
+			const value = [captchaId, result];
+			if (connectionState !== 2 || pendingCaptcha !== null ||
+				!isDefaultCaptchaResult(value) || !outstandingCaptchas.has(captchaId)) {
+				throw new Error("Default CAPTCHA response is not valid");
+			}
+			outstandingCaptchas.delete(captchaId);
+			pendingCaptcha = captchaId;
+			endpoint.send(3, value);
 		},
 		stop() {
 			if (disposed) {
