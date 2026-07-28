@@ -840,4 +840,61 @@ describe("page game IPC adapter", () => {
 		ipc.dispose();
 		workerEndpoint.dispose();
 	});
+
+	test("privately validates ordinary strict identity state", async () => {
+		let workerEndpoint;
+		const received = [];
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
+					incoming: new Map([[2, {
+						kind: "message",
+						validate: () => true,
+						handler: () => { workerEndpoint.send(1); }
+					}]]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }],
+						...([17, 18, 19, 20].map(command => [
+							command,
+							{ kind: "message", validate: () => true }
+						]))
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() {
+				throw new Error("strict identity state unexpectedly terminated the worker");
+			}
+		};
+		const handlers = Array.from({ length: 20 }, () => () => undefined);
+		for (let index = 16; index < 20; index++) {
+			handlers[index] = value => { received.push([index + 1, value]); };
+		}
+		const ipc = await createGameIpc(
+			worker,
+			"wss://server.rplace.live",
+			"wss://server.rplace.live",
+			100,
+			handlers
+		);
+		ipc.connect("device", null);
+		await tick();
+		workerEndpoint.send(17, 65_535);
+		workerEndpoint.send(18, 7);
+		workerEndpoint.send(19, [[7, "name"]]);
+		workerEndpoint.send(20, "name");
+		await tick();
+		expect(received).toEqual([
+			[17, 65_535],
+			[18, 7],
+			[19, [[7, "name"]]],
+			[20, "name"]
+		]);
+		workerEndpoint.send(18, 8);
+		await tick();
+		expect(received).toHaveLength(4);
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
 });

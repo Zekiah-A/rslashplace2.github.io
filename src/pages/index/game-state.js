@@ -116,7 +116,11 @@ const gameIpc = await createGameIpc(
 		handleStrictPasskeySuccess,
 		handleSpectating,
 		handleUnspectating,
-		handleStrictPixels
+		handleStrictPixels,
+		handleOnline,
+		handleSetIntId,
+		handleNameInfo,
+		handleChatName
 	]
 );
 wsCapsule.addEventListener("message", handleIpcMessage);
@@ -249,14 +253,15 @@ async function handleStrictChanges(/**@type {[number,number,ArrayBuffer]}*/[widt
 addIpcMessageHandler("handleChanges", (/**@type {[number,number,ArrayBuffer]}*/value) => {
 	return handleStrictChanges(value);
 });
-addIpcMessageHandler("setOnline", (/**@type {number}*/count) => {
+function handleOnline(/**@type {number}*/count) {
 	const onlineEvent = new CustomEvent("online", {
 		detail: { count },
 		bubbles: true,
 		composed: true
 	});
 	window.dispatchEvent(onlineEvent);
-});
+}
+addIpcMessageHandler("setOnline", handleOnline);
 addIpcMessageHandler("handlePlacerInfoRegion", (/**@type {[number,number,Number,ArrayBuffer]}*/[position, width, height, region]) => {
 	const regionView = new DataView(region);
 	let i = position;
@@ -279,7 +284,7 @@ addIpcMessageHandler("handlePlacerInfoRegion", (/**@type {[number,number,Number,
 	});
 	window.dispatchEvent(placerInfoEvent);
 });
-addIpcMessageHandler("handleSetIntId", (/**@type {number}*/userIntId) => {
+function handleSetIntId(/**@type {number}*/userIntId) {
 	intId = userIntId;
 	if (automatedActivityFlags !== 0) {
 		gameIpc.reportAutomatedActivity([
@@ -297,7 +302,8 @@ addIpcMessageHandler("handleSetIntId", (/**@type {number}*/userIntId) => {
 		composed: true
 	});
 	window.dispatchEvent(intIdEvent);
-});
+}
+addIpcMessageHandler("handleSetIntId", handleSetIntId);
 function handleStrictCanvasRestriction(/**@type {[boolean, string]}*/[locked, reason]) {
 	canvasLocked = locked;
 
@@ -371,7 +377,7 @@ function handleStrictCooldown(/**@type {[number]}*/[endDateMs]) {
 addIpcMessageHandler("handleCooldown", (/**@type {Date}*/endDate) => {
 	handleStrictCooldown([endDate.getTime()]);
 });
-addIpcMessageHandler("setChatName", (/**@type {string}*/name) => {
+function handleChatName(/**@type {string}*/name) {
 	chatName = name;
 
 	const chatNameEvent = new CustomEvent("chatname", {
@@ -380,11 +386,15 @@ addIpcMessageHandler("setChatName", (/**@type {string}*/name) => {
 		composed: true
 	});
 	window.dispatchEvent(chatNameEvent);
-});
-addIpcMessageHandler("handleNameInfo", (/**@type {Map<number, string>}*/newIntIdNames) => {
-	for (const [ key, value ] of newIntIdNames.entries()) {
+}
+addIpcMessageHandler("setChatName", handleChatName);
+function handleNameInfo(/**@type {[number, string][]}*/entries) {
+	for (const [ key, value ] of entries) {
 		intIdNames.set(key, value);
 	}
+}
+addIpcMessageHandler("handleNameInfo", (/**@type {Map<number, string>}*/newIntIdNames) => {
+	handleNameInfo(Array.from(newIntIdNames.entries()));
 });
 addIpcMessageHandler("addLiveChatMessage", (/**@type {[LiveChatMessage,string]}*/[message, channel]) => {
 	const liveChatMessageEvent = new CustomEvent("livechatmessage", {

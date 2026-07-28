@@ -79,6 +79,13 @@ function isPixels(value) {
 			(pixel.length === 2 || isUint32(pixel[2])));
 }
 
+function isNameEntries(value) {
+	return Array.isArray(value) && value.every(entry =>
+		Array.isArray(entry) && entry.length === 2 &&
+		isUint32(entry[0]) && typeof entry[1] === "string" &&
+		entry[1].length <= 255);
+}
+
 function isTimestamp(value) {
 	return Number.isSafeInteger(value) && value >= 0 && value <= MAX_DATE_MS;
 }
@@ -186,6 +193,10 @@ export async function createGameIpc(
 		() => undefined,
 		() => undefined,
 		() => undefined,
+		() => undefined,
+		() => undefined,
+		() => undefined,
+		() => undefined,
 		() => undefined
 	]
 ) {
@@ -278,6 +289,8 @@ export async function createGameIpc(
 	let passkeyState = 0;
 	/** @type {number|null} */
 	let spectatingId = null;
+	/** @type {number|null} */
+	let userId = null;
 	/** @type {ReturnType<typeof createStrictIpcEndpoint>|undefined} */
 	let endpoint;
 	/** @type {(() => void)|undefined} */
@@ -392,6 +405,27 @@ export async function createGameIpc(
 		kind: "message",
 		validate: value => connectionState === 2 && isPixels(value),
 		handler: value => { eventHandlers[15](value); }
+	}], [17, {
+		kind: "message",
+		validate: value => connectionState === 2 &&
+			Number.isInteger(value) && value >= 0 && value <= 65_535,
+		handler: value => { eventHandlers[16](value); }
+	}], [18, {
+		kind: "message",
+		validate: value => connectionState === 2 && userId === null && isUint32(value),
+		handler: value => {
+			userId = value;
+			eventHandlers[17](value);
+		}
+	}], [19, {
+		kind: "message",
+		validate: value => connectionState === 2 && isNameEntries(value),
+		handler: value => { eventHandlers[18](value); }
+	}], [20, {
+		kind: "message",
+		validate: value => connectionState === 2 &&
+			typeof value === "string" && value.length <= 255,
+		handler: value => { eventHandlers[19](value); }
 	}]]);
 	/** @type {Map<number, import("shared-ipc").StrictOutgoingCommand>} */
 	const outgoing = new Map([[0, {
