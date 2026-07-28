@@ -105,7 +105,10 @@ const gameIpc = await createGameIpc(
 		handleGameDisconnect,
 		value => defaultCaptchaHandlers?.[0](value),
 		value => defaultCaptchaHandlers?.[1](value),
-		() => defaultCaptchaHandlers?.[2]()
+		() => defaultCaptchaHandlers?.[2](),
+		handleStrictCooldownInfo,
+		handleStrictCooldown,
+		handleStrictRejectedPixel
 	]
 );
 wsCapsule.addEventListener("message", handleIpcMessage);
@@ -142,8 +145,9 @@ addIpcMessageHandler("handlePalette", (/**@type {[number[],number,number]}*/[pal
 	});
 	window.dispatchEvent(paletteEvent);
 });
-addIpcMessageHandler("handleCooldownInfo", /**@type {[Date, number]}*/([endDate, cooldown]) => {
-	setCooldown(endDate.getTime());
+function handleStrictCooldownInfo(/**@type {[number, number]}*/[endDateMs, cooldown]) {
+	const endDate = new Date(endDateMs);
+	setCooldown(endDateMs);
 	COOLDOWN = cooldown;
 
 	const cooldownEvent = new CustomEvent("cooldown", {
@@ -152,6 +156,9 @@ addIpcMessageHandler("handleCooldownInfo", /**@type {[Date, number]}*/([endDate,
 		composed: true
 	});
 	window.dispatchEvent(cooldownEvent);
+}
+addIpcMessageHandler("handleCooldownInfo", /**@type {[Date, number]}*/([endDate, cooldown]) => {
+	handleStrictCooldownInfo([endDate.getTime(), cooldown]);
 });
 addIpcMessageHandler("handleCanvasInfo", async (/**@type {[number,number]}*/[width, height]) => {
 	// Used by RplaceServer
@@ -314,8 +321,9 @@ addIpcMessageHandler("handlePixels", (/**@type {{position:number,colour:number,p
 	});
 	window.dispatchEvent(pixelsEvent);
 });
-addIpcMessageHandler("handleRejectedPixel", (/**@type {[Date,Number,number]}*/[endDate, position, colour]) => {
-	setCooldown(endDate.getTime());
+function handleStrictRejectedPixel(/**@type {[number, number, number]}*/[endDateMs, position, colour]) {
+	const endDate = new Date(endDateMs);
+	setCooldown(endDateMs);
 	setPixelI(position, colour);
 
 	const x = position % WIDTH;
@@ -326,9 +334,15 @@ addIpcMessageHandler("handleRejectedPixel", (/**@type {[Date,Number,number]}*/[e
 		composed: true
 	});
 	window.dispatchEvent(pixelsEvent);
+}
+addIpcMessageHandler("handleRejectedPixel", (/**@type {[Date,Number,number]}*/[endDate, position, colour]) => {
+	handleStrictRejectedPixel([endDate.getTime(), position, colour]);
 });
+function handleStrictCooldown(/**@type {[number]}*/[endDateMs]) {
+	setCooldown(endDateMs);
+}
 addIpcMessageHandler("handleCooldown", (/**@type {Date}*/endDate) => {
-	setCooldown(endDate.getTime());
+	handleStrictCooldown([endDate.getTime()]);
 });
 addIpcMessageHandler("setChatName", (/**@type {string}*/name) => {
 	chatName = name;

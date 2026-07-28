@@ -4,6 +4,7 @@ import { createStrictIpcEndpoint, sendIpcMessage } from "shared-ipc";
 /** @typedef {[string, string, string|null]} ConnectArgs */
 /** @typedef {[number, string[], Uint8Array]} DefaultCaptchaChallenge */
 /** @typedef {{ connect: (device: string, vip: string|null) => void, putPixel: (position: number, colour: number) => void, reportAutomatedActivity: (activity: ClientActivity) => void, sendCaptchaResult: (captchaId: number, result: string) => void, stop: () => void, dispose: () => void }} GameIpc */
+const MAX_DATE_MS = 8_640_000_000_000_000;
 
 /** @param {*} activity */
 function isClientActivity(activity) {
@@ -58,6 +59,27 @@ function isPixelPlacement(value) {
 		Number.isInteger(value[1]) && value[1] >= 0 && value[1] <= 255;
 }
 
+function isTimestamp(value) {
+	return Number.isSafeInteger(value) && value >= 0 && value <= MAX_DATE_MS;
+}
+
+function isCooldownInfo(value) {
+	return Array.isArray(value) && value.length === 2 &&
+		isTimestamp(value[0]) &&
+		Number.isInteger(value[1]) && value[1] >= 0 && value[1] <= 0xFFFF_FFFF;
+}
+
+function isCooldown(value) {
+	return Array.isArray(value) && value.length === 1 && isTimestamp(value[0]);
+}
+
+function isRejectedPixel(value) {
+	return Array.isArray(value) && value.length === 3 &&
+		isTimestamp(value[0]) &&
+		Number.isInteger(value[1]) && value[1] >= 0 && value[1] <= 0xFFFF_FFFF &&
+		Number.isInteger(value[2]) && value[2] >= 0 && value[2] <= 255;
+}
+
 function createChannelId() {
 	const bytes = crypto.getRandomValues(new Uint8Array(16));
 	return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
@@ -91,7 +113,7 @@ export function selectGameIpcMode(server, officialServer) {
  * @param {string} server
  * @param {string} officialServer
  * @param {number} [bootstrapTimeoutMs]
- * @param {[() => void, (value: [number, string]) => void, (value: DefaultCaptchaChallenge) => void, (value: DefaultCaptchaChallenge) => void, () => void]} [eventHandlers]
+ * @param {[() => void, (value: [number, string]) => void, (value: DefaultCaptchaChallenge) => void, (value: DefaultCaptchaChallenge) => void, () => void, (value: [number, number]) => void, (value: [number]) => void, (value: [number, number, number]) => void]} [eventHandlers]
  * @returns {Promise<GameIpc>}
  */
 export async function createGameIpc(
@@ -100,6 +122,9 @@ export async function createGameIpc(
 	officialServer,
 	bootstrapTimeoutMs = 5_000,
 	eventHandlers = [
+		() => undefined,
+		() => undefined,
+		() => undefined,
 		() => undefined,
 		() => undefined,
 		() => undefined,
@@ -233,6 +258,18 @@ export async function createGameIpc(
 			pendingCaptcha = null;
 			eventHandlers[4]();
 		}
+	}], [6, {
+		kind: "message",
+		validate: value => connectionState === 2 && isCooldownInfo(value),
+		handler: value => { eventHandlers[5](value); }
+	}], [7, {
+		kind: "message",
+		validate: value => connectionState === 2 && isCooldown(value),
+		handler: value => { eventHandlers[6](value); }
+	}], [8, {
+		kind: "message",
+		validate: value => connectionState === 2 && isRejectedPixel(value),
+		handler: value => { eventHandlers[7](value); }
 	}]]);
 	/** @type {Map<number, import("shared-ipc").StrictOutgoingCommand>} */
 	const outgoing = new Map([[0, {

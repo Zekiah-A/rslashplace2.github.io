@@ -193,6 +193,70 @@ describe("page game IPC adapter", () => {
 		workerEndpoint.dispose();
 	});
 
+	test("privately validates strict placement cooldown and rejection feedback", async () => {
+		let workerEndpoint;
+		const feedback = [];
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
+					incoming: new Map([[2, {
+						kind: "message",
+						validate: () => true,
+						handler: () => undefined
+					}]]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }],
+						[6, { kind: "message", validate: () => true }],
+						[7, { kind: "message", validate: () => true }],
+						[8, { kind: "message", validate: () => true }]
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() {
+				throw new Error("strict placement feedback unexpectedly terminated the worker");
+			}
+		};
+		const ipc = await createGameIpc(
+			worker,
+			"wss://server.rplace.live",
+			"wss://server.rplace.live",
+			100,
+			[
+				() => feedback.push("open"),
+				() => undefined,
+				() => undefined,
+				() => undefined,
+				() => undefined,
+				value => feedback.push(["initial", value]),
+				value => feedback.push(["cooldown", value]),
+				value => feedback.push(["rejected", value])
+			]
+		);
+
+		ipc.connect("device", null);
+		await tick();
+		workerEndpoint.send(1);
+		workerEndpoint.send(6, [1_725_000_000_000, 1_400]);
+		workerEndpoint.send(7, [1_725_000_001_400]);
+		workerEndpoint.send(8, [1_725_000_001_400, 42, 7]);
+		await tick();
+
+		const expectedFeedback = [
+			"open",
+			["initial", [1_725_000_000_000, 1_400]],
+			["cooldown", [1_725_000_001_400]],
+			["rejected", [1_725_000_001_400, 42, 7]]
+		];
+		expect(feedback).toEqual(expectedFeedback);
+		workerEndpoint.send(8, [1_725_000_001_400, 42, 7, 8]);
+		await tick();
+		expect(feedback).toEqual(expectedFeedback);
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
+
 	test("rejects malformed strict close notification fields", async () => {
 		let workerEndpoint;
 		let closes = 0;
