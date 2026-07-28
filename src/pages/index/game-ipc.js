@@ -3,7 +3,7 @@ import { createStrictIpcEndpoint, sendIpcMessage } from "shared-ipc";
 /** @typedef {[number, number, number, number, number]} ClientActivity */
 /** @typedef {[string, string, string|null]} ConnectArgs */
 /** @typedef {[number, string[], Uint8Array]} DefaultCaptchaChallenge */
-/** @typedef {{ chatReact: (messageId: number, reaction: string) => void, connect: (device: string, vip: string|null) => void, putPixel: (position: number, colour: number) => void, reportAutomatedActivity: (activity: ClientActivity) => void, sendCaptchaResult: (captchaId: number, result: string) => void, setName: (name: string) => void, spectateUser: (userId: number) => void, unspectateUser: () => void, stop: () => void, dispose: () => void }} GameIpc */
+/** @typedef {{ chatReact: (messageId: number, reaction: string) => void, chatReport: (messageId: number, reason: string) => void, connect: (device: string, vip: string|null) => void, putPixel: (position: number, colour: number) => void, reportAutomatedActivity: (activity: ClientActivity) => void, sendCaptchaResult: (captchaId: number, result: string) => void, setName: (name: string) => void, spectateUser: (userId: number) => void, unspectateUser: () => void, stop: () => void, dispose: () => void }} GameIpc */
 const MAX_DATE_MS = 8_640_000_000_000_000;
 
 /** @param {*} activity */
@@ -100,6 +100,12 @@ function isChatReaction(value) {
 	return Array.isArray(value) && value.length === 3 &&
 		isUint32(value[0]) && isUint32(value[1]) &&
 		typeof value[2] === "string" && value[2].length > 0;
+}
+
+function isChatReport(value) {
+	return Array.isArray(value) && value.length === 2 &&
+		isUint32(value[0]) && typeof value[1] === "string" &&
+		value[1].length > 0;
 }
 
 function isTimestamp(value) {
@@ -304,6 +310,12 @@ export async function createGameIpc(
 					messageId,
 					reactKey: reaction
 				});
+			},
+			chatReport(messageId, reason) {
+				if (disposed) throw new Error("Game IPC endpoint is closed");
+				const value = [messageId, reason];
+				if (!isChatReport(value)) throw new TypeError("Invalid chat report");
+				sendIpcMessage(/** @type {Worker} */(worker), "chatReport", { messageId, reason });
 			},
 			stop() {
 				if (disposed) {
@@ -523,6 +535,9 @@ export async function createGameIpc(
 	}], [8, {
 		kind: "message",
 		validate: isChatReactionRequest
+	}], [9, {
+		kind: "message",
+		validate: isChatReport
 	}]]);
 	let timeout;
 	const timeoutPromise = new Promise((_, reject) => {
@@ -683,6 +698,14 @@ export async function createGameIpc(
 				throw new Error("Chat reaction is not valid");
 			}
 			endpoint.send(8, value);
+		},
+		chatReport(messageId, reason) {
+			if (disposed) throw new Error("Game IPC endpoint is closed");
+			const value = [messageId, reason];
+			if (connectionState !== 2 || !isChatReport(value)) {
+				throw new Error("Chat report is not valid");
+			}
+			endpoint.send(9, value);
 		},
 		stop() {
 			if (disposed) {

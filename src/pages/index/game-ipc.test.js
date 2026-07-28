@@ -83,6 +83,7 @@ describe("page game IPC adapter", () => {
 		expect(() => ipc.reportAutomatedActivity([17, 1, 2, 3])).toThrow();
 		expect(Reflect.ownKeys(ipc).sort()).toEqual([
 			"chatReact",
+			"chatReport",
 			"connect",
 			"dispose",
 			"putPixel",
@@ -997,7 +998,8 @@ describe("page game IPC adapter", () => {
 				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
 					incoming: new Map([
 						[2, { kind: "message", validate: () => true, handler: () => workerEndpoint.send(1) }],
-						[8, { kind: "message", validate: () => true, handler: value => sent.push(value) }]
+						[8, { kind: "message", validate: () => true, handler: value => sent.push(value) }],
+						[9, { kind: "message", validate: () => true, handler: value => sent.push(["report", value]) }]
 					]),
 					outgoing: new Map([
 						[0, { kind: "message", validate: value => value === undefined }],
@@ -1019,12 +1021,14 @@ describe("page game IPC adapter", () => {
 		ipc.connect("device", null);
 		await tick();
 		ipc.chatReact(7, "👍");
+		ipc.chatReport(7, "spam");
 		workerEndpoint.send(23, 9);
 		workerEndpoint.send(24, [7, 8, "👍"]);
 		await tick();
-		expect(sent).toEqual([[7, "👍"]]);
+		expect(sent).toEqual([[7, "👍"], ["report", [7, "spam"]]]);
 		expect(received).toEqual([["delete", 9], ["reaction", [7, 8, "👍"]]]);
 		expect(() => ipc.chatReact(-1, "")).toThrow();
+		expect(() => ipc.chatReport(7, "")).toThrow();
 		ipc.dispose();
 		workerEndpoint.dispose();
 	});

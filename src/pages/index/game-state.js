@@ -544,6 +544,10 @@ export function sendServerMessage(name, args=undefined, event=undefined) {
 		gameIpc.chatReact(args.messageId, args.reactKey);
 		return;
 	}
+	if (name === "chatReport") {
+		gameIpc.chatReport(args.messageId, args.reason);
+		return;
+	}
 	sendIpcMessage(wsCapsule, name, args);
 }
 
