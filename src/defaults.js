@@ -225,7 +225,7 @@ export const ADS = [
 	{ url: "https://t.me/rplacelive", banners: { en: "/images/telegram-ad.png" } },
 	{ url: "https://discord.gg/4XnZ9WGux2", banners: { en: "/images/discord-ad.png" } },
 	{ url: "https://arbitrum.life", banners: { en: "/images/arbitrum.png" } }*/
-	{ url: "https://texel.pages.dev", banners: { en: "/images/texel.png" } }
+	{ url: "https://texel.rplace.live", banners: { en: "/images/texel.png" } }
 ]
 
 /**
