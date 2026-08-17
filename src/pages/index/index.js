@@ -11,7 +11,7 @@ import { addIpcMessageHandler, handleIpcMessage, sendIpcMessage, makeIpcRequest 
 import { openOverlayMenu } from "./overlay-menu.js";
 import { TurnstileWidget } from "../../services/turnstile-manager.js";
 import { theme } from "./game-themes.js";
-import { BOARD, canvasLocked, CHANGES, chatName, connectStatus, COOLDOWN, cooldownEndDate, HEIGHT, intId, intIdNames, intIdPositions, onCooldown, PALETTE, PALETTE_USABLE_REGION, passkeyAuthState, placementMode, RAW_BOARD, setCooldown, setPasskeyAuthState, SOCKET_PIXELS, WIDTH, sendServerMessage, makeServerRequest, connect } from "./game-state.js";
+import { BOARD, canvasLocked, CHANGES, chatName, connectStatus, COOLDOWN, cooldownEndDate, HEIGHT, intId, intIdNames, intIdPositions, onCooldown, PALETTE, PALETTE_USABLE_REGION, passkeyAuthState, placementMode, RAW_BOARD, setCooldown, setPasskeyAuthState, setPlacementMode, SOCKET_PIXELS, WIDTH, placePixel, sendDefaultCaptchaResult, sendServerMessage, setDefaultCaptchaHandlers, makeServerRequest, connect } from "./game-state.js";
 import { generateIndicators, generatePalette, hideIndicators, showPalette } from "./palette.js";
 import { authenticatePasskey, getPasskeyStatus, registerPasskey, supportsPasskeys } from "./passkeys.js";
 import "./popup.js";
@@ -514,7 +514,7 @@ window.addEventListener("livechatreaction", (/**@type {Event}*/e) => {
 	}
 });
 
-addIpcMessageHandler("handleTextCaptcha", (/**@type {[number,string[],Uint8Array]}*/[ captchaId, options, imageData ]) => {
+function handleTextCaptcha(/**@type {[number,string[],Uint8Array]}*/[ captchaId, options, imageData ]) {
 	captchaOptions.innerHTML = ""
 
 	let captchaSubmitted = false
@@ -528,7 +528,7 @@ addIpcMessageHandler("handleTextCaptcha", (/**@type {[number,string[],Uint8Array
 				return console.error("Could not send captcha response. No text?")
 			}
 			captchaSubmitted = true;
-			sendServerMessage("sendCaptchaResult", { captchaId, result: text });
+			sendDefaultCaptchaResult(captchaId, text);
 			captchaOptions.style.pointerEvents = "none";
 		})
 	}
@@ -542,8 +542,9 @@ addIpcMessageHandler("handleTextCaptcha", (/**@type {[number,string[],Uint8Array
 	else {
 		updateImgCaptchaCanvasFallback(imageBlob)
 	}
-});
-addIpcMessageHandler("handleEmojiCaptcha", (/**@type {[number,string[],Uint8Array]}*/[captchaId, options, imageData]) => {
+}
+addIpcMessageHandler("handleTextCaptcha", handleTextCaptcha);
+function handleEmojiCaptcha(/**@type {[number,string[],Uint8Array]}*/[captchaId, options, imageData]) {
 	captchaOptions.innerHTML = "";
 
 	let captchaSubmitted = false;
@@ -567,7 +568,7 @@ addIpcMessageHandler("handleEmojiCaptcha", (/**@type {[number,string[],Uint8Arra
 				return console.error("Could not send captcha response. No emoji?")
 			}
 			captchaSubmitted = true;
-			sendServerMessage("sendCaptchaResult", { captchaId, result: emoji });
+			sendDefaultCaptchaResult(captchaId, emoji);
 			captchaOptions.style.pointerEvents = "none";
 			clearCaptchaCanvas();
 		}
@@ -586,11 +587,14 @@ addIpcMessageHandler("handleEmojiCaptcha", (/**@type {[number,string[],Uint8Arra
 	else {
 		updateImgCaptchaCanvasFallback(imageBlob);
 	}
-});
-addIpcMessageHandler("handleCaptchaSuccess", () => {
+}
+addIpcMessageHandler("handleEmojiCaptcha", handleEmojiCaptcha);
+function handleCaptchaSuccess() {
 	captchaPopup.close();
-});
-addIpcMessageHandler("handleTurnstile", /**@type {[number,string]}*/([captchaId, siteKey]) => {
+}
+addIpcMessageHandler("handleCaptchaSuccess", handleCaptchaSuccess);
+setDefaultCaptchaHandlers(handleTextCaptcha, handleEmojiCaptcha, handleCaptchaSuccess);
+function handleTurnstile(/**@type {[number,string]}*/[captchaId, siteKey]) {
 	const siteVariant = document.documentElement.dataset.variant;
 	const turnstileTheme = siteVariant === "dark" ? "dark" : "light";
 	turnstileMenu.setAttribute("open", "true");
@@ -615,10 +619,14 @@ addIpcMessageHandler("handleTurnstile", /**@type {[number,string]}*/([captchaId,
 			console.log("Turnstile loaded successfully");
 		}
 	});
-});
-addIpcMessageHandler("handleTurnstileSuccess", () => {
+}
+addIpcMessageHandler("handleTurnstile", handleTurnstile);
+function handleTurnstileSuccess() {
 	turnstileMenu.removeAttribute("open")
-});
+}
+addIpcMessageHandler("handleTurnstileSuccess", handleTurnstileSuccess);
+window.addEventListener("turnstilechallenge", event => handleTurnstile(event.detail));
+window.addEventListener("turnstilesuccess", handleTurnstileSuccess);
 window.addEventListener("punishment", (/**@type {Event}*/e) => {
 	if (!(e instanceof CustomEvent)) {
 		throw new Error("Window event was not of type CustomEvent");
@@ -1075,7 +1083,7 @@ function handlePixelPlace(e) {
 	}
 	// Send place to websocket
 	const position = Math.floor(x) + Math.floor(y) * WIDTH;
-	sendServerMessage("putPixel", { position, colour: selectedColour }, e);
+	placePixel(position, selectedColour, e);
 
 	// We client-side predict our new cooldown and pixel place the pixel went through
 	// TODO: Note client-server latency will make real cooldown a little bigger
@@ -1734,7 +1742,10 @@ function addLiveChatMessages({ channel, messages, before }) {
 	});
 }
 addIpcMessageHandler("addLiveChatMessages", addLiveChatMessages);
-addIpcMessageHandler("handleClientViewport", (/**@type {[number, number]}*/[ boardRenderer, movementMode ]) => {
+window.addEventListener("livechathistory", event => {
+	addLiveChatMessages(event.detail);
+});
+function handleClientViewport(/**@type {[number, number]}*/[boardRenderer]) {
 	if (boardRenderer === RENDERER_TYPE.BoardRenderer3D) {
 		throw new Error("Not implemented");
 	}
@@ -1746,6 +1757,13 @@ addIpcMessageHandler("handleClientViewport", (/**@type {[number, number]}*/[ boa
 		setViewportRenderer(renderer);
 	}
 	renderAll();
+}
+addIpcMessageHandler("handleClientViewport", value => {
+	setPlacementMode(value[1]);
+	handleClientViewport(value);
+});
+window.addEventListener("clientviewport", event => {
+	handleClientViewport(event.detail);
 });
 addIpcMessageHandler("handleClientTheme", (/**@type {[string,string,string]}*/[id, variant, effects]) => {
 	throw new Error("Not implemented");
@@ -2851,7 +2869,7 @@ async function initialise() {
 		// Start initialising websocket connection
 		const fingerprintJS = await FingerprintJS.load();
 		const result = await fingerprintJS.get();
-		connect(result.visitorId, localStorage.server || DEFAULT_SERVER, localStorage.vip);
+		connect(result.visitorId, localStorage.vip);
 	}, Math.max(0, nextSafeConnectDate - Date.now()));
 }
 if (document.readyState !== "loading") {

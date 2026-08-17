@@ -1,6 +1,7 @@
 "use strict";
 import { DEFAULT_BOARD, DEFAULT_BOARD_FALLBACK, DEFAULT_COOLDOWN, DEFAULT_HEIGHT, DEFAULT_PALETTE, DEFAULT_PALETTE_USABLE_REGION, DEFAULT_SERVER, DEFAULT_WIDTH, PLACEMENT_MODE, RENDERER_TYPE } from "../../defaults";
 import { addIpcMessageHandler, handleIpcMessage, makeIpcRequest, sendIpcMessage } from "shared-ipc";
+import { createGameIpc } from "./game-ipc.js";
 
 // Types
 /**
@@ -67,6 +68,9 @@ export let COOLDOWN = DEFAULT_COOLDOWN;
 /**@type {boolean}*/export let canvasLocked = false;
 /**@type {"not-required"|"required"|"completed"|"failed"|"unsupported"}*/export let passkeyAuthState = "not-required";
 /**@type {PLACEMENT_MODE}*/export let placementMode = PLACEMENT_MODE.selectPixel;
+export function setPlacementMode(value) {
+	placementMode = value;
+}
 /**@type {Set<number>}*/export const spectators = new Set(); // Spectator int Id
 /**@type {number|null}*/export let spectatingIntId = null;
 
@@ -82,7 +86,8 @@ export let COOLDOWN = DEFAULT_COOLDOWN;
 /**@type {Timer|null}*/let fetchFailTimeout = null;
 
 // WsCapsule logic & wscapsule message handlers
-const httpServerUrl = (localStorage.server || DEFAULT_SERVER)
+const selectedServer = localStorage.server || DEFAULT_SERVER;
+const httpServerUrl = selectedServer
 	.replace("wss://", "https://").replace("ws://", "http://");
 // TODO: Find a better cache invalidation strategy for game worker
 const res = await fetch(`${httpServerUrl}/public/game-worker.js?v=${Date.now()}`);
@@ -92,39 +97,76 @@ const url = URL.createObjectURL(blob);
 const wsCapsule = new Worker(url, {
 	type: "module"
 });
+let defaultCaptchaHandlers;
+const gameIpc = await createGameIpc(
+	wsCapsule,
+	selectedServer,
+	DEFAULT_SERVER,
+	undefined,
+	[
+		handleGameConnect,
+		handleGameDisconnect,
+		value => defaultCaptchaHandlers?.[0](value),
+		value => defaultCaptchaHandlers?.[1](value),
+		() => defaultCaptchaHandlers?.[2](),
+		handleStrictCooldownInfo,
+		handleStrictCooldown,
+		handleStrictRejectedPixel,
+		handleStrictPalette,
+		handleStrictChanges,
+		handleStrictCanvasRestriction,
+		handleStrictPasskeyRequired,
+		handleStrictPasskeySuccess,
+		handleSpectating,
+		handleUnspectating,
+		handleStrictPixels,
+		handleOnline,
+		handleSetIntId,
+		handleNameInfo,
+		handleChatName,
+		handleSpectatorJoined,
+		handleSpectatorLeft,
+		handleChatDelete,
+		handleChatReaction,
+		handleLiveChat,
+		handlePlaceChat,
+		handlePunishment,
+		handleChatHistory,
+		handleChallenge,
+		value => dispatchSecurityEvent("turnstilechallenge", value),
+		() => dispatchSecurityEvent("turnstilesuccess"),
+		value => dispatchSecurityEvent("hcaptchachallenge", value),
+		() => dispatchSecurityEvent("hcaptchasuccess"),
+		handlePlacerRegion,
+		value => {
+			setPlacementMode(value[1]);
+			dispatchSecurityEvent("clientviewport", value);
+		}
+	]
+);
 wsCapsule.addEventListener("message", handleIpcMessage);
 window.addEventListener("beforeunload", (e) => {
 	console.log("Stopping wsCapsule...")
-	sendIpcMessage(wsCapsule, "stop");
+	gameIpc.stop();
 });
 // Undefine global objects
 const undefineGlobals = new CustomEvent("undefineglobals");
 window.dispatchEvent(undefineGlobals);
-const automated = !!(
-	window.navigator.webdriver ||
+// Weak client telemetry flags: webdriver, extension API, zero-height window, no plugins, headless UA.
+const automatedActivityFlags =
+	(window.navigator.webdriver ? 1 : 0) |
 	// @ts-ignore Browser specifics
-	window.chrome?.runtime?.onConnect ||
-	window.outerHeight === 0 ||
+	(window.chrome?.runtime?.onConnect ? 2 : 0) |
+	(window.outerHeight === 0 ? 4 : 0) |
 	// @ts-ignore Browser specifics
-	navigator?.plugins?.length === 0 ||
-	/HeadlessChrome/.test(navigator.userAgent)
-);
+	(navigator?.plugins?.length === 0 ? 8 : 0) |
+	(/HeadlessChrome/.test(navigator.userAgent) ? 16 : 0);
 
-addIpcMessageHandler("handleConnect", () => {
+function handleGameConnect() {
 	connectStatus = "connected";
-	if (automated) {
-		// TODO: Flesh out and make more internal to wscapsule
-		const activityObj = {
-			windowOuterWidth: window.outerWidth,
-			windowInnerWidth: window.innerWidth,
-			windowOuterHeight: window.outerHeight,
-			windowInnerHeight: window.innerHeight,
-			localStorage: { ...localStorage }
-		};
-		sendIpcMessage(wsCapsule, "informAutomatedActivity", activityObj);
-	}
-});
-addIpcMessageHandler("handlePalette", (/**@type {[number[],number,number]}*/[palette, start, end]) => {
+}
+addIpcMessageHandler("handleConnect", handleGameConnect);
+function handleStrictPalette(/**@type {[number[],number,number]}*/[palette, start, end]) {
 	PALETTE = palette;
 	PALETTE_USABLE_REGION.start = start;
 	PALETTE_USABLE_REGION.end = end;
@@ -135,9 +177,13 @@ addIpcMessageHandler("handlePalette", (/**@type {[number[],number,number]}*/[pal
 		composed: true
 	});
 	window.dispatchEvent(paletteEvent);
+}
+addIpcMessageHandler("handlePalette", (/**@type {[number[],number,number]}*/value) => {
+	handleStrictPalette(value);
 });
-addIpcMessageHandler("handleCooldownInfo", /**@type {[Date, number]}*/([endDate, cooldown]) => {
-	setCooldown(endDate.getTime());
+function handleStrictCooldownInfo(/**@type {[number, number]}*/[endDateMs, cooldown]) {
+	const endDate = new Date(endDateMs);
+	setCooldown(endDateMs);
 	COOLDOWN = cooldown;
 
 	const cooldownEvent = new CustomEvent("cooldown", {
@@ -146,6 +192,9 @@ addIpcMessageHandler("handleCooldownInfo", /**@type {[Date, number]}*/([endDate,
 		composed: true
 	});
 	window.dispatchEvent(cooldownEvent);
+}
+addIpcMessageHandler("handleCooldownInfo", /**@type {[Date, number]}*/([endDate, cooldown]) => {
+	handleStrictCooldownInfo([endDate.getTime(), cooldown]);
 });
 addIpcMessageHandler("handleCanvasInfo", async (/**@type {[number,number]}*/[width, height]) => {
 	// Used by RplaceServer
@@ -182,8 +231,8 @@ addIpcMessageHandler("handleCanvasInfo", async (/**@type {[number,number]}*/[wid
 	});
 	window.dispatchEvent(boardLoadedEvent);
 });
-addIpcMessageHandler("handleChanges", async (/**@type {[number,number,ArrayBuffer]}*/[width, height, changes]) => {
-	// Used by legacy server
+async function handleStrictChanges(/**@type {[number,number,ArrayBuffer]}*/[width, height, changes]) {
+	// Initial compressed canvas changes.
 	if (width != WIDTH || height != HEIGHT) {
 		setSize(width, height);
 	}
@@ -221,16 +270,20 @@ addIpcMessageHandler("handleChanges", async (/**@type {[number,number,ArrayBuffe
 		composed: true
 	});
 	window.dispatchEvent(boardLoadedEvent);
+}
+addIpcMessageHandler("handleChanges", (/**@type {[number,number,ArrayBuffer]}*/value) => {
+	return handleStrictChanges(value);
 });
-addIpcMessageHandler("setOnline", (/**@type {number}*/count) => {
+function handleOnline(/**@type {number}*/count) {
 	const onlineEvent = new CustomEvent("online", {
 		detail: { count },
 		bubbles: true,
 		composed: true
 	});
 	window.dispatchEvent(onlineEvent);
-});
-addIpcMessageHandler("handlePlacerInfoRegion", (/**@type {[number,number,Number,ArrayBuffer]}*/[position, width, height, region]) => {
+}
+addIpcMessageHandler("setOnline", handleOnline);
+function handlePlacerRegion(/**@type {[number,number,number,ArrayBuffer]}*/[position, width, height, region]) {
 	const regionView = new DataView(region);
 	let i = position;
 	let regionI = 0;
@@ -251,9 +304,19 @@ addIpcMessageHandler("handlePlacerInfoRegion", (/**@type {[number,number,Number,
 		composed: true
 	});
 	window.dispatchEvent(placerInfoEvent);
-});
-addIpcMessageHandler("handleSetIntId", (/**@type {number}*/userIntId) => {
+}
+addIpcMessageHandler("handlePlacerInfoRegion", handlePlacerRegion);
+function handleSetIntId(/**@type {number}*/userIntId) {
 	intId = userIntId;
+	if (automatedActivityFlags !== 0) {
+		gameIpc.reportAutomatedActivity([
+			automatedActivityFlags,
+			window.outerWidth,
+			window.innerWidth,
+			window.outerHeight,
+			window.innerHeight
+		]);
+	}
 
 	const intIdEvent = new CustomEvent("intid", {
 		detail: { intId },
@@ -261,8 +324,9 @@ addIpcMessageHandler("handleSetIntId", (/**@type {number}*/userIntId) => {
 		composed: true
 	});
 	window.dispatchEvent(intIdEvent);
-});
-addIpcMessageHandler("setCanvasLocked", (/**@type {[boolean, string|null]}*/[locked, reason]) => {
+}
+addIpcMessageHandler("handleSetIntId", handleSetIntId);
+function handleStrictCanvasRestriction(/**@type {[boolean, string]}*/[locked, reason]) {
 	canvasLocked = locked;
 
 	const canvasLockedEvent = new CustomEvent("canvaslocked", {
@@ -271,8 +335,16 @@ addIpcMessageHandler("setCanvasLocked", (/**@type {[boolean, string|null]}*/[loc
 		composed: true
 	});
 	window.dispatchEvent(canvasLockedEvent);
+}
+addIpcMessageHandler("setCanvasLocked", (/**@type {[boolean, string]}*/value) => {
+	handleStrictCanvasRestriction(value);
 });
-addIpcMessageHandler("handlePixels", (/**@type {{position:number,colour:number,placer:number|undefined}[]}*/pixels) => {
+function handleStrictPixels(/**@type {([number, number]|[number, number, number])[]}*/values) {
+	const pixels = values.map(([position, colour, placer]) => ({
+		position,
+		colour,
+		placer
+	}));
 	for (const pixel of pixels) {
 		setPixelI(pixel.position, pixel.colour);
 
@@ -298,9 +370,15 @@ addIpcMessageHandler("handlePixels", (/**@type {{position:number,colour:number,p
 		composed: true
 	});
 	window.dispatchEvent(pixelsEvent);
+}
+addIpcMessageHandler("handlePixels", (/**@type {{position:number,colour:number,placer:number|undefined}[]}*/pixels) => {
+	handleStrictPixels(pixels.map(pixel => pixel.placer === undefined ?
+		[pixel.position, pixel.colour] :
+		[pixel.position, pixel.colour, pixel.placer]));
 });
-addIpcMessageHandler("handleRejectedPixel", (/**@type {[Date,Number,number]}*/[endDate, position, colour]) => {
-	setCooldown(endDate.getTime());
+function handleStrictRejectedPixel(/**@type {[number, number, number]}*/[endDateMs, position, colour]) {
+	const endDate = new Date(endDateMs);
+	setCooldown(endDateMs);
 	setPixelI(position, colour);
 
 	const x = position % WIDTH;
@@ -311,11 +389,17 @@ addIpcMessageHandler("handleRejectedPixel", (/**@type {[Date,Number,number]}*/[e
 		composed: true
 	});
 	window.dispatchEvent(pixelsEvent);
+}
+addIpcMessageHandler("handleRejectedPixel", (/**@type {[Date,Number,number]}*/[endDate, position, colour]) => {
+	handleStrictRejectedPixel([endDate.getTime(), position, colour]);
 });
+function handleStrictCooldown(/**@type {[number]}*/[endDateMs]) {
+	setCooldown(endDateMs);
+}
 addIpcMessageHandler("handleCooldown", (/**@type {Date}*/endDate) => {
-	setCooldown(endDate.getTime());
+	handleStrictCooldown([endDate.getTime()]);
 });
-addIpcMessageHandler("setChatName", (/**@type {string}*/name) => {
+function handleChatName(/**@type {string}*/name) {
 	chatName = name;
 
 	const chatNameEvent = new CustomEvent("chatname", {
@@ -324,64 +408,131 @@ addIpcMessageHandler("setChatName", (/**@type {string}*/name) => {
 		composed: true
 	});
 	window.dispatchEvent(chatNameEvent);
-});
-addIpcMessageHandler("handleNameInfo", (/**@type {Map<number, string>}*/newIntIdNames) => {
-	for (const [ key, value ] of newIntIdNames.entries()) {
+}
+addIpcMessageHandler("setChatName", handleChatName);
+function handleNameInfo(/**@type {[number, string][]}*/entries) {
+	for (const [ key, value ] of entries) {
 		intIdNames.set(key, value);
 	}
+}
+addIpcMessageHandler("handleNameInfo", (/**@type {Map<number, string>}*/newIntIdNames) => {
+	handleNameInfo(Array.from(newIntIdNames.entries()));
 });
-addIpcMessageHandler("addLiveChatMessage", (/**@type {[LiveChatMessage,string]}*/[message, channel]) => {
+function handleLiveChat(/**@type {[number,string,number,string,number,string,number|null]}*/[
+	messageId, content, senderIntId, senderChatName, sendDate, channel, repliesTo
+]) {
+	const message = {
+		messageId, content, senderIntId, senderChatName, sendDate,
+		reactions: new Map(),
+		channel,
+		repliesTo
+	};
 	const liveChatMessageEvent = new CustomEvent("livechatmessage", {
 		detail: { message, channel },
 		bubbles: true,
 		composed: true
 	});
 	window.dispatchEvent(liveChatMessageEvent);
+}
+addIpcMessageHandler("addLiveChatMessage", (/**@type {[LiveChatMessage,string]}*/[message, channel]) => {
+	handleLiveChat([
+		message.messageId, message.content, message.senderIntId,
+		message.senderChatName, message.sendDate, channel, message.repliesTo
+	]);
 });
-addIpcMessageHandler("addPlaceChatMessage", (/**@type {PlaceChatMessage}*/message) => {
+function handlePlaceChat(/**@type {[number,string,number,string]}*/[
+	positionIndex, content, senderIntId, senderChatName
+]) {
+	const message = { positionIndex, content, senderIntId, senderChatName };
 	const placeChatMessageEvent = new CustomEvent("placechatmessage", {
 		detail: { message },
 		bubbles: true,
 		composed: true
 	});
 	window.dispatchEvent(placeChatMessageEvent);
+}
+addIpcMessageHandler("addPlaceChatMessage", (/**@type {PlaceChatMessage}*/message) => {
+	handlePlaceChat([
+		message.positionIndex, message.content,
+		message.senderIntId, message.senderChatName
+	]);
 });
-addIpcMessageHandler("handleLiveChatDelete", (/**@type {number}*/messageId) => {
+function handleChatDelete(/**@type {number}*/messageId) {
 	const liveChatDeleteEvent = new CustomEvent("livechatdelete", {
 		detail: { messageId },
 		bubbles: true,
 		composed: true
 	});
 	window.dispatchEvent(liveChatDeleteEvent);
-});
-addIpcMessageHandler("handleLiveChatReaction", (/**@type {[number,number,string]}*/[messageId, reactorId, reactionKey]) => {
+}
+addIpcMessageHandler("handleLiveChatDelete", handleChatDelete);
+function handleChatReaction(/**@type {[number,number,string]}*/[messageId, reactorId, reactionKey]) {
 	const liveChatReactionEvent = new CustomEvent("livechatreaction", {
 		detail: { messageId, reactorId, reactionKey },
 		bubbles: true,
 		composed: true
 	});
 	window.dispatchEvent(liveChatReactionEvent);
-});
-addIpcMessageHandler("applyPunishment", (/**@type {ModerationInfo}*/info) => {
+}
+addIpcMessageHandler("handleLiveChatReaction", handleChatReaction);
+function handlePunishment(/**@type {[number,number,number,string,string]}*/[
+	state, startDate, endDate, reason, appeal
+]) {
+	const info = { state, startDate, endDate, reason, appeal };
 	const punishmentEvent = new CustomEvent("punishment", {
 		detail: info,
 		bubbles: true,
 		composed: true
 	});
 	window.dispatchEvent(punishmentEvent);
+}
+addIpcMessageHandler("applyPunishment", (/**@type {ModerationInfo}*/info) => {
+	handlePunishment([
+		info.state, info.startDate, info.endDate, info.reason, info.appeal
+	]);
 });
-addIpcMessageHandler("handleChallenge", async (/**@type {[string,string]}*/[source, input]) => {
+function handleChatHistory(/**@type {[number,number,boolean,string,Array]}*/[
+	fromMessageId, count, before, channel, messages
+]) {
+	window.dispatchEvent(new CustomEvent("livechathistory", {
+		detail: {
+			fromMessageId,
+			count,
+			before,
+			channel,
+			messages: messages.map(message => ({
+				messageId: message[0],
+				content: message[1],
+				senderIntId: message[2],
+				senderChatName: "",
+				sendDate: message[3],
+				reactions: new Map(message[4].map(
+					reaction => [reaction[0], new Set(reaction[1])]
+				)),
+				channel: message[5],
+				repliesTo: message[6]
+			}))
+		}
+	}));
+}
+async function handleChallenge(/**@type {[string,Uint8Array]}*/[source, input]) {
 	const result = await Object.getPrototypeOf(async function () { })
 		.constructor(source)(input);
-	sendIpcMessage(wsCapsule, "sendChallengeResult", result);
-});
-addIpcMessageHandler("handlePasskeyAuthRequired", () => {
+	gameIpc.sendChallengeResult(result);
+}
+addIpcMessageHandler("handleChallenge", value => { void handleChallenge(value); });
+function dispatchSecurityEvent(name, detail=undefined) {
+	window.dispatchEvent(new CustomEvent(name, { detail }));
+}
+function handleStrictPasskeyRequired() {
 	setPasskeyAuthState("required");
-});
-addIpcMessageHandler("handlePasskeyAuthSuccess", () => {
+}
+addIpcMessageHandler("handlePasskeyAuthRequired", handleStrictPasskeyRequired);
+function handleStrictPasskeySuccess() {
 	setPasskeyAuthState("completed");
-});
-addIpcMessageHandler("handleSpectating", (/**@type {number}*/userIntId) => {
+}
+addIpcMessageHandler("handlePasskeyAuthSuccess", handleStrictPasskeySuccess);
+function handleSpectating(/**@type {number}*/userIntId) {
 	spectatingIntId = userIntId;
 
 	const spectatingEvent = new CustomEvent("spectating", {
@@ -390,8 +541,9 @@ addIpcMessageHandler("handleSpectating", (/**@type {number}*/userIntId) => {
 		bubbles: true
 	});
 	window.dispatchEvent(spectatingEvent);
-});
-addIpcMessageHandler("handleUnspectating", (/**@type {[number, string]}*/[ userIntId, reason ]) => {
+}
+addIpcMessageHandler("handleSpectating", handleSpectating);
+function handleUnspectating(/**@type {[number, string]}*/[ userIntId, reason ]) {
 	if (spectatingIntId === userIntId) {
 		spectatingIntId = null;
 	}
@@ -402,17 +554,22 @@ addIpcMessageHandler("handleUnspectating", (/**@type {[number, string]}*/[ userI
 		bubbles: true
 	});
 	window.dispatchEvent(unspectatingEvent);
-});
-addIpcMessageHandler("handleSpectated", (/**@type {number}*/spectatorIntId) => {
+}
+addIpcMessageHandler("handleUnspectating", handleUnspectating);
+function handleSpectatorJoined(/**@type {number}*/spectatorIntId) {
 	spectators.add(spectatorIntId);
-});
-addIpcMessageHandler("handleUnspectated", (/**@type {number}*/spectatorIntId) => {
+}
+addIpcMessageHandler("handleSpectated", handleSpectatorJoined);
+function handleSpectatorLeft(/**@type {number}*/spectatorIntId) {
 	spectators.delete(spectatorIntId);
-});
-addIpcMessageHandler("handleDisconnect", (/**@type {[number, string]}*/[code, reason]) => {
+}
+addIpcMessageHandler("handleUnspectated", handleSpectatorLeft);
+/** @param {[number, string]} value */
+function handleGameDisconnect([code, reason]) {
 	localStorage.lastDisconnect = Date.now();
 	connectStatus = "disconnected";
 	setCooldown(null);
+	gameIpc.dispose();
 	wsCapsule.terminate();
 
 	const disconnectEvent = new CustomEvent("disconnect", {
@@ -421,23 +578,19 @@ addIpcMessageHandler("handleDisconnect", (/**@type {[number, string]}*/[code, re
 		bubbles: true
 	});
 	window.dispatchEvent(disconnectEvent);
-});
+}
+addIpcMessageHandler("handleDisconnect", handleGameDisconnect);
 
 /**
  * @param {string} device 
- * @param {string} server 
  * @param {string} [vip] 
  */
-export function connect(device, server = DEFAULT_SERVER, vip = undefined) {
+export function connect(device, vip = undefined) {
 	if (connectStatus !== "initial" && connectStatus !== "disconnected") {
 		return;
 	}
 
-	sendIpcMessage(wsCapsule, "connect", {
-		device,
-		server,
-		vip
-	});
+	gameIpc.connect(device, vip ?? null);
 	connectStatus = "connecting";
 }
 
@@ -452,7 +605,74 @@ export function sendServerMessage(name, args=undefined, event=undefined) {
 		throw new Error("Trusted method event was invalid");
 	}
 
+	if (name === "spectateUser") {
+		gameIpc.spectateUser(args);
+		return;
+	}
+	if (name === "unspectateUser") {
+		gameIpc.unspectateUser();
+		return;
+	}
+	if (name === "setName") {
+		gameIpc.setName(args);
+		return;
+	}
+	if (name === "chatReact") {
+		gameIpc.chatReact(args.messageId, args.reactKey);
+		return;
+	}
+	if (name === "chatReport") {
+		gameIpc.chatReport(args.messageId, args.reason);
+		return;
+	}
+	if (name === "sendLiveChatMsg") {
+		gameIpc.sendLiveChat(args.message, args.channel, args.replyId);
+		return;
+	}
+	if (name === "sendPlaceChatMsg") {
+		gameIpc.sendPlaceChat(args.message, args.position);
+		return;
+	}
+	if (name === "requestLoadChannelPrevious") {
+		gameIpc.requestChatHistory(args.channel, args.anchorMsgId, args.msgCount);
+		return;
+	}
+	if (name === "sendTurnstileResult") {
+		gameIpc.sendTurnstileResult(args.captchaId, args.result);
+		return;
+	}
+	if (name === "sendHCaptchaResult") {
+		gameIpc.sendHCaptchaResult(args.captchaId, args.result);
+		return;
+	}
+	if (name === "requestPixelPlacers") {
+		gameIpc.requestPixelPlacers(args.position, args.width, args.height);
+		return;
+	}
 	sendIpcMessage(wsCapsule, name, args);
+}
+
+/**
+ * @param {number} position
+ * @param {number} colour
+ * @param {Event} event
+ */
+export function placePixel(position, colour, event) {
+	if (!(event instanceof Event) || !event.isTrusted) {
+		throw new Error("Trusted pixel placement event was invalid");
+	}
+	gameIpc.putPixel(position, colour);
+}
+
+export function setDefaultCaptchaHandlers(handleText, handleEmoji, handleSuccess) {
+	if (defaultCaptchaHandlers) {
+		throw new Error("Default CAPTCHA handlers are already registered");
+	}
+	defaultCaptchaHandlers = Object.freeze([handleText, handleEmoji, handleSuccess]);
+}
+
+export function sendDefaultCaptchaResult(captchaId, result) {
+	gameIpc.sendCaptchaResult(captchaId, result);
 }
 
 /**
@@ -460,6 +680,12 @@ export function sendServerMessage(name, args=undefined, event=undefined) {
  * @param {any} [args]
  */
 export async function makeServerRequest(call, args=undefined) {
+	if (call === "fetchLinkKey") {
+		return await gameIpc.fetchLinkKey();
+	}
+	if (call === "sendModAction") {
+		return await gameIpc.sendModAction(args);
+	}
 	return await makeIpcRequest(wsCapsule, call, args);
 }
 
