@@ -11,7 +11,7 @@ import { addIpcMessageHandler, handleIpcMessage, sendIpcMessage, makeIpcRequest 
 import { openOverlayMenu } from "./overlay-menu.js";
 import { TurnstileWidget } from "../../services/turnstile-manager.js";
 import { theme } from "./game-themes.js";
-import { BOARD, canvasLocked, CHANGES, chatName, connectStatus, COOLDOWN, cooldownEndDate, HEIGHT, intId, intIdNames, intIdPositions, onCooldown, PALETTE, PALETTE_USABLE_REGION, passkeyAuthState, placementMode, RAW_BOARD, setCooldown, setPasskeyAuthState, setPlacementMode, SOCKET_PIXELS, WIDTH, placePixel, sendDefaultCaptchaResult, sendServerMessage, setDefaultCaptchaHandlers, makeServerRequest, connect } from "./game-state.js";
+import { BOARD, canvasLocked, CHANGES, chatName, connectStatus, COOLDOWN, cooldownEndDate, HEIGHT, intId, intIdNames, intIdPositions, onCooldown, PALETTE, PALETTE_USABLE_REGION, passkeyAuthState, placementMode, RAW_BOARD, setCooldown, setPasskeyAuthState, setPlacementMode, SOCKET_PIXELS, supportsCanvasPixelReports, WIDTH, placePixel, sendDefaultCaptchaResult, sendServerMessage, setDefaultCaptchaHandlers, makeServerRequest, connect } from "./game-state.js";
 import { generateIndicators, generatePalette, hideIndicators, showPalette } from "./palette.js";
 import { authenticatePasskey, getPasskeyStatus, registerPasskey, supportsPasskeys } from "./passkeys.js";
 import "./popup.js";
@@ -19,6 +19,7 @@ import "./popup.js";
 import FingerprintJS from "@fingerprintjs/fingerprintjs";
 import DisableDevtool from "disable-devtool";
 import { BoardRendererSphere } from "./board-renderer-sphere.js";
+import { getOwnPunishments, listPunishments, resolvePunishmentAppeal, sendModerationAction, submitPunishmentAppeal } from "./moderation-api.js";
 
 if (import.meta.env.PROD) {
 	DisableDevtool({
@@ -75,6 +76,22 @@ const modal = /**@type {HTMLDialogElement}*/($("#modal"));
 const modalCloseButton = /**@type {HTMLButtonElement}*/($("#modalCloseButton")); 
 const modalInstallButton = /**@type {HTMLButtonElement}*/($("#modalInstallButton"));
 const modalCopyrightButton = /**@type {HTMLButtonElement}*/($("#modalCopyrightButton"));
+const placerInfoDialog = /**@type {HTMLDialogElement}*/($("#placerInfoDialog"));
+const placerInfoCloseButton = /**@type {HTMLElement}*/($("#placerInfoCloseButton"));
+const placerInfoStatus = /**@type {HTMLElement}*/($("#placerInfoStatus"));
+const placerInfoDetails = /**@type {HTMLElement}*/($("#placerInfoDetails"));
+const placerInfoPosition = /**@type {HTMLElement}*/($("#placerInfoPosition"));
+const placerInfoName = /**@type {HTMLElement}*/($("#placerInfoName"));
+const placerInfoUserId = /**@type {HTMLElement}*/($("#placerInfoUserId"));
+const canvasReportDialog = /**@type {HTMLDialogElement}*/($("#canvasReportDialog"));
+const canvasReportForm = /**@type {HTMLFormElement}*/($("#canvasReportForm"));
+const canvasReportCloseButton = /**@type {HTMLElement}*/($("#canvasReportCloseButton"));
+const canvasReportPosition = /**@type {HTMLElement}*/($("#canvasReportPosition"));
+const canvasReportReason = /**@type {HTMLTextAreaElement}*/($("#canvasReportReason"));
+const canvasReportLimit = /**@type {HTMLElement}*/($("#canvasReportLimit"));
+const canvasReportStatus = /**@type {HTMLElement}*/($("#canvasReportStatus"));
+const canvasReportSubmitButton = /**@type {HTMLButtonElement}*/($("#canvasReportSubmitButton"));
+const canvasReportCancelButton = /**@type {HTMLButtonElement}*/($("#canvasReportCancelButton"));
 const templateImage = /**@type {HTMLImageElement}*/($("#templateImage"));
 const overlayMenuOld = /**@type {HTMLElement}*/($("#overlayMenuOld"));
 const overlayMenuOldCloseButton = /**@type {HTMLElement}*/($("#overlayMenuOldCloseButton"));
@@ -117,6 +134,11 @@ const punishmentStartDate = /** @type {HTMLElement}*/($("#punishmentStartDate"))
 const punishmentEndDate = /** @type {HTMLElement}*/($("#punishmentEndDate"));
 const punishmentReason = /** @type {HTMLElement}*/($("#punishmentReason"));
 const punishmentAppeal = /** @type {HTMLElement}*/($("#punishmentAppeal"));
+const punishmentAppealConversation = /** @type {HTMLElement}*/($("#punishmentAppealConversation"));
+const punishmentAppealForm = /** @type {HTMLFormElement}*/($("#punishmentAppealForm"));
+const punishmentAppealMessage = /** @type {HTMLTextAreaElement}*/($("#punishmentAppealMessage"));
+const punishmentAppealLimit = /** @type {HTMLElement}*/($("#punishmentAppealLimit"));
+const punishmentAppealSubmitButton = /** @type {HTMLButtonElement}*/($("#punishmentAppealSubmitButton"));
 const punishmentMenu = /** @type {HTMLElement}*/($("#punishmentMenu"));
 const moderationMenu = /**@type {HTMLInputElement}*/($("#moderationMenu"));
 const modUserId = /**@type {HTMLInputElement}*/($("#modUserId"));
@@ -136,6 +158,13 @@ const modActionKick = /**@type {HTMLInputElement}*/($("#modActionKick"));
 const modActionMute = /**@type {HTMLInputElement}*/($("#modActionMute"));
 const modActionBan = /**@type {HTMLInputElement}*/($("#modActionBan"));
 const modActionCaptcha = /**@type {HTMLInputElement}*/($("#modActionCaptcha"));
+const moderationReviewDialog = /**@type {HTMLDialogElement}*/($("#moderationReviewDialog"));
+const moderationReviewCloseButton = /**@type {HTMLElement}*/($("#moderationReviewCloseButton"));
+const moderationMutesTab = /**@type {HTMLButtonElement}*/($("#moderationMutesTab"));
+const moderationBansTab = /**@type {HTMLButtonElement}*/($("#moderationBansTab"));
+const moderationReviewStatus = /**@type {HTMLElement}*/($("#moderationReviewStatus"));
+const moderationReviewList = /**@type {HTMLElement}*/($("#moderationReviewList"));
+const moderationReviewMoreButton = /**@type {HTMLButtonElement}*/($("#moderationReviewMoreButton"));
 const chatPanel = /**@type {HTMLElement}*/($("#chatPanel"));
 const messageEmojisPanel = /**@type {HTMLElement}*/($("#messageEmojisPanel"));
 const messageInputEmojiPanel = /**@type {HTMLElement}*/($("#messageInputEmojiPanel"));
@@ -173,6 +202,19 @@ const secretSettingsDialog = /**@type {HTMLDialogElement}*/($("#secretSettingsDi
 /**@type {TurnstileWidget|null}*/let currentTurnstileWidget = null;
 /**@type {{ x: number, y: number, z: number }|null}*/let spectateStartState = null;
 /**@type {boolean}*/let passkeyAuthBusy = false;
+let placerInfoRequestId = 0;
+/**@type {number|null}*/let selectedCanvasReportPosition = null;
+const reportTextEncoder = new TextEncoder();
+/**@type {import("./moderation-api.js").PunishmentRecord|null}*/let currentPunishmentRecord = null;
+/**@type {"mute"|"ban"}*/let moderationReviewType = "mute";
+/**@type {Map<("mute"|"ban"), import("./moderation-api.js").PunishmentRecord[]>}*/
+const moderationReviewRecords = new Map([["mute", []], ["ban", []]]);
+/**@type {Map<("mute"|"ban"), number>}*/
+const moderationReviewOffsets = new Map([["mute", 0], ["ban", 0]]);
+/**@type {Map<("mute"|"ban"), boolean>}*/
+const moderationReviewHasMore = new Map([["mute", false], ["ban", false]]);
+/**@type {Set<("mute"|"ban")>}*/
+const moderationReviewLoading = new Set();
 
 function getHttpServerUrl() {
 	return (localStorage.server || DEFAULT_SERVER)
@@ -627,29 +669,144 @@ function handleTurnstileSuccess() {
 addIpcMessageHandler("handleTurnstileSuccess", handleTurnstileSuccess);
 window.addEventListener("turnstilechallenge", event => handleTurnstile(event.detail));
 window.addEventListener("turnstilesuccess", handleTurnstileSuccess);
+/** @type {Set<("mute"|"ban")>} */
+const activePunishmentTypes = new Set();
+
+/**
+ * @param {HTMLElement} container
+ * @param {"left"|"right"} displaySide
+ * @param {number} senderIntId
+ * @param {string|null} senderChatName
+ * @param {string} message
+ * @param {number|null} date
+ */
+function appendAppealMessage(container, displaySide, senderIntId, senderChatName, message, date) {
+	const appealMessage = /** @type {import("./game-elements.js").LiveChatMessage} */(
+		document.createElement("r-live-chat-message"));
+	appealMessage.dataset.displaySide = displaySide;
+	appealMessage.dataset.explicitTime = typeof date === "number" && Number.isFinite(date)
+		? new Date(date).toLocaleString() : "Unknown time";
+	appealMessage.messageId = -1;
+	appealMessage.senderIntId = senderIntId;
+	appealMessage.senderChatName = senderChatName;
+	appealMessage.content = message;
+	appealMessage.sendDate = typeof date === "number" && Number.isFinite(date) ? date / 1000 : 0;
+	container.append(appealMessage);
+}
+
+/** @param {import("./moderation-api.js").PunishmentRecord|null} record */
+function renderPlayerAppeal(record) {
+	currentPunishmentRecord = record;
+	punishmentAppealConversation.replaceChildren();
+	punishmentAppealConversation.hidden = true;
+	punishmentAppealForm.hidden = true;
+	punishmentAppealMessage.disabled = false;
+	punishmentAppealSubmitButton.disabled = true;
+	punishmentAppealMessage.value = "";
+	punishmentAppealLimit.textContent = "0 / 1000 bytes";
+
+	if (!record) {
+		punishmentAppeal.textContent = "This punishment could not be matched to an appealable record.";
+		return;
+	}
+	if (!record.appealMessage && record.finishDate > Date.now()) {
+		punishmentAppeal.textContent = "You may submit one appeal. It cannot be edited after submission.";
+		punishmentAppealForm.hidden = false;
+		return;
+	}
+	if (!record.appealMessage) {
+		punishmentAppeal.textContent = "This expired punishment was not appealed.";
+		return;
+	}
+
+	punishmentAppeal.textContent = `Appeal ${record.appealStatus}.`;
+	punishmentAppealConversation.hidden = false;
+	appendAppealMessage(punishmentAppealConversation, "left", intId, chatName || "You",
+		record.appealMessage, record.appealSubmittedAt);
+	if (record.appealStatus !== "pending") {
+		const knownModerator = typeof record.appealResponderIntId === "number" &&
+			Number.isInteger(record.appealResponderIntId) && record.appealResponderIntId >= 0;
+		const moderatorIntId = knownModerator ? record.appealResponderIntId : -1;
+		const moderatorName = knownModerator ? record.appealResponderChatName : "Unknown moderator";
+		appendAppealMessage(punishmentAppealConversation, "right", moderatorIntId, moderatorName,
+			record.appealResponse || "No response was recorded.", record.appealRespondedAt);
+	}
+}
+
+/** @param {{state:number, startDate:number, endDate:number}} info */
+async function loadPlayerAppeal(info) {
+	punishmentAppeal.textContent = "Loading appeal status...";
+	punishmentAppealForm.hidden = true;
+	try {
+		const data = await getOwnPunishments();
+		const type = (info.state & PUNISHMENT_STATE.ban) === PUNISHMENT_STATE.ban ? "ban" : "mute";
+		const records = Array.isArray(data?.records) ? data.records : [];
+		const exact = records.find(record => record.type === type &&
+			Math.floor(record.startDate / 1000) * 1000 === info.startDate &&
+			Math.floor(record.finishDate / 1000) * 1000 === info.endDate);
+		const fallback = records.find(record => record.type === type && record.finishDate > Date.now());
+		renderPlayerAppeal(exact || fallback || null);
+	}
+	catch (error) {
+		currentPunishmentRecord = null;
+		punishmentAppeal.textContent = "Appeal service is unavailable on this server.";
+		console.error("Couldn't load punishment appeal:", error);
+	}
+}
+
 window.addEventListener("punishment", (/**@type {Event}*/e) => {
 	if (!(e instanceof CustomEvent)) {
 		throw new Error("Window event was not of type CustomEvent");
 	}
 	const info = e.detail;
+	const type = (info.state & PUNISHMENT_STATE.ban) === PUNISHMENT_STATE.ban ? "ban" : "mute";
+	const active = info.endDate > Date.now();
+	if (active) activePunishmentTypes.add(type);
+	else activePunishmentTypes.delete(type);
 
-	if (info.state === PUNISHMENT_STATE.mute) {
-		messageInput.disabled = true;
+	if (type === "mute") {
 		punishmentNote.innerHTML = "You have been <strong>muted</strong>, you cannot send messages in live chat.";
 	}
-	else if (info.state === PUNISHMENT_STATE.ban) {
-		setCanvasLocked(true);
-		messageInput.disabled = true;
-		canvasLock.style.display = "flex";
+	else {
 		punishmentNote.innerHTML = "You have been <strong>banned</strong> from placing on the canvas or sending messages in live chat.";
 	}
+	if (!active) punishmentNote.textContent = `Your ${type} has ended.`;
+	messageInput.disabled = activePunishmentTypes.size > 0;
+	if (activePunishmentTypes.has("ban")) setCanvasLocked(true, "You are currently banned from placing pixels.");
+	else if (!canvasLocked && spectateStartState === null) setCanvasLocked(false);
 
 	punishmentUserId.textContent = `Your User ID: #${intId}`;
 	punishmentStartDate.textContent = `Started on: ${new Date(info.startDate).toLocaleString()}`;
 	punishmentEndDate.textContent = `Ending on: ${new Date(info.endDate).toLocaleString()}`;
 	punishmentReason.textContent = `Reason: ${info.reason}`;
-	punishmentAppeal.textContent = `Appeal status: ${(info.appeal && info.appeal !== "null") ? info.appeal : "Unappealable"}`;
+	void loadPlayerAppeal(info);
 	punishmentMenu.setAttribute("open", "true");
+});
+
+punishmentAppealMessage.addEventListener("input", () => {
+	const byteLength = reportTextEncoder.encode(punishmentAppealMessage.value.trim()).byteLength;
+	punishmentAppealLimit.textContent = `${byteLength} / 1000 bytes`;
+	punishmentAppealSubmitButton.disabled = byteLength === 0 || byteLength > 1000;
+});
+punishmentAppealForm.addEventListener("submit", async event => {
+	event.preventDefault();
+	if (!currentPunishmentRecord) return;
+	const message = punishmentAppealMessage.value.trim();
+	const byteLength = reportTextEncoder.encode(message).byteLength;
+	if (byteLength === 0 || byteLength > 1000) return;
+	punishmentAppealMessage.disabled = true;
+	punishmentAppealSubmitButton.disabled = true;
+	punishmentAppeal.textContent = "Submitting appeal...";
+	try {
+		const result = await submitPunishmentAppeal(
+			currentPunishmentRecord.type, currentPunishmentRecord.punishmentId, message);
+		renderPlayerAppeal(result.appeal);
+	}
+	catch (error) {
+		punishmentAppealMessage.disabled = false;
+		punishmentAppealSubmitButton.disabled = false;
+		punishmentAppeal.textContent = error instanceof Error ? error.message : "Could not submit appeal.";
+	}
 });
 window.addEventListener("spectating", (/**@type {Event}*/e) => {
 	if (!(e instanceof CustomEvent)) {
@@ -723,13 +880,40 @@ placeContext.addEventListener("mousedown", function(e) {
 	e.stopPropagation();
 });
 const placeContextReportButton = /**@type {HTMLButtonElement}*/($("#placeContextReportButton"));
-placeContextReportButton.addEventListener("click", function(e) {
-	
+placeContextReportButton.disabled = !supportsCanvasPixelReports;
+if (!supportsCanvasPixelReports) {
+	placeContextReportButton.title = "Pixel reports are only available on the official server";
+}
+placeContextReportButton.addEventListener("click", function() {
+	if (!supportsCanvasPixelReports) {
+		return;
+	}
+	const pixelX = Math.floor(Number(placeContext.dataset.x));
+	const pixelY = Math.floor(Number(placeContext.dataset.y));
+	const inBounds = Number.isFinite(pixelX) && Number.isFinite(pixelY) &&
+		pixelX >= 0 && pixelX < WIDTH && pixelY >= 0 && pixelY < HEIGHT;
+	selectedCanvasReportPosition = inBounds ? pixelX + pixelY * WIDTH : null;
+	placeContext.style.display = "none";
+	canvasReportPosition.textContent = `${pixelX}, ${pixelY}`;
+	canvasReportForm.reset();
+	canvasReportReason.disabled = !inBounds;
+	canvasReportStatus.textContent = inBounds ? "" : "This location is outside the canvas.";
+	canvasReportStatus.hidden = inBounds;
+	canvasReportSubmitButton.disabled = true;
+	canvasReportCancelButton.textContent = "Cancel";
+	canvasReportLimit.textContent = "0 / 280 bytes";
+	if (!canvasReportDialog.open) {
+		canvasReportDialog.showModal();
+	}
+	if (inBounds) {
+		canvasReportReason.focus();
+	}
 });
 const placeContextInfoButton = /**@type {HTMLButtonElement}*/($("#placeContextInfoButton"));
 placeContextInfoButton.addEventListener("click", function(e) {
 	const px = Number(placeContext.dataset.x);
 	const py = Number(placeContext.dataset.y);
+	placeContext.style.display = "none";
 	showPlacerInfo(px, py);
 });
 if (!localStorage.vip?.startsWith("!")) {
@@ -742,9 +926,20 @@ if (!localStorage.vip?.startsWith("!")) {
  * @returns 
  */
 async function showPlacerInfo(x, y) {
-	const id = intIdPositions.get(Math.floor(x) + Math.floor(y) * WIDTH);
+	const requestId = ++placerInfoRequestId;
+	const pixelX = Math.floor(x);
+	const pixelY = Math.floor(y);
+	const id = intIdPositions.get(pixelX + pixelY * WIDTH);
+
+	placerInfoStatus.textContent = "Looking up placer information...";
+	placerInfoStatus.hidden = false;
+	placerInfoDetails.hidden = true;
+	if (!placerInfoDialog.open) {
+		placerInfoDialog.showModal();
+	}
+
 	if (id === undefined) {
-		alert("Could not find details of who placed pixel at current location...");
+		placerInfoStatus.textContent = "Could not find details of who placed the pixel at this location.";
 		return;
 	}
 	let name = intIdNames.get(id);
@@ -764,16 +959,65 @@ async function showPlacerInfo(x, y) {
 			name = user.chatName;
 		}
 		catch(e) {
-			alert("Could not find details of who placed pixel at current location...");
+			if (requestId === placerInfoRequestId) {
+				placerInfoStatus.textContent = "Could not find details of who placed the pixel at this location.";
+			}
 			console.error("Couldn't show placer info:", e);
+			return;
 		}
 	}
-	alert(`Details of who placed at ${
-		Math.floor(x)}, ${
-		Math.floor(y)}:\nName: ${
-		name || "anon"}\nUser ID: #${
-		id}`);
+	if (requestId !== placerInfoRequestId) {
+		return;
+	}
+
+	placerInfoPosition.textContent = `${pixelX}, ${pixelY}`;
+	placerInfoName.textContent = name || "anon";
+	placerInfoUserId.textContent = `#${id}`;
+	placerInfoStatus.hidden = true;
+	placerInfoDetails.hidden = false;
 }
+placerInfoCloseButton.addEventListener("click", function() {
+	placerInfoDialog.close();
+});
+
+canvasReportReason.addEventListener("input", function() {
+	const byteLength = reportTextEncoder.encode(canvasReportReason.value.trim()).byteLength;
+	canvasReportLimit.textContent = `${byteLength} / 280 bytes`;
+	canvasReportSubmitButton.disabled = byteLength === 0 || byteLength > 280;
+	canvasReportStatus.hidden = true;
+});
+canvasReportForm.addEventListener("submit", function(e) {
+	e.preventDefault();
+	const reason = canvasReportReason.value.trim();
+	const byteLength = reportTextEncoder.encode(reason).byteLength;
+	if (selectedCanvasReportPosition === null || byteLength === 0 || byteLength > 280) {
+		canvasReportStatus.textContent = "Enter a report reason no longer than 280 bytes.";
+		canvasReportStatus.hidden = false;
+		return;
+	}
+	try {
+		sendServerMessage("reportCanvasPixel", {
+			position: selectedCanvasReportPosition,
+			reason
+		}, e);
+		canvasReportReason.disabled = true;
+		canvasReportSubmitButton.disabled = true;
+		canvasReportCancelButton.textContent = "Close";
+		canvasReportStatus.textContent = "Report sent for moderator review.";
+		canvasReportStatus.hidden = false;
+	}
+	catch(error) {
+		canvasReportStatus.textContent = "Could not send the report. Please reconnect and try again.";
+		canvasReportStatus.hidden = false;
+		console.error("Couldn't report canvas pixel:", error);
+	}
+});
+canvasReportCloseButton.addEventListener("click", function() {
+	canvasReportDialog.close();
+});
+canvasReportCancelButton.addEventListener("click", function() {
+	canvasReportDialog.close();
+});
 
 // Modal
 // Prompt user if they want to install site as PWA if they press the modal button
@@ -812,6 +1056,10 @@ document.body.addEventListener("keydown", function(/**@type {KeyboardEvent}*/e) 
 		else if (e.key === "M" && e.shiftKey && localStorage.vip?.startsWith("!")) {
 			e.preventDefault();
 			moderationMenu.toggleAttribute("open");
+		}
+		else if (e.key === "R" && e.shiftKey && localStorage.vip?.startsWith("!")) {
+			e.preventDefault();
+			openModerationReview();
 		}
 		else if (e.key === "V" && e.shiftKey && boardRenderer) {
 			e.preventDefault();
@@ -2010,14 +2258,23 @@ messageCancelReplyButton.addEventListener("click", function(e) {
  * @typedef {KickOptions | MuteBanOptions | CaptchaOptions | DeleteOptions} ModOptions
  */
 const modOptionsButton = /**@type {HTMLButtonElement}*/($("#modOptionsButton"));
-modOptionsButton.addEventListener("click", async function(e) {
+modOptionsButton.addEventListener("click", async function() {
 	const options = getModOptions();
 	if (!options) {
 		return;
 	}
-	const statusMsg = await makeServerRequest("sendModAction", options);
-	alert(statusMsg);
-	clearChatModerate();
+	modOptionsButton.disabled = true;
+	try {
+		const result = await sendModerationAction(options, localStorage.vip);
+		alert(result.message);
+		clearChatModerate();
+	}
+	catch (error) {
+		alert(error instanceof Error ? error.message : "Moderation action failed");
+	}
+	finally {
+		modOptionsButton.disabled = !modReason.value;
+	}
 });
 modMessageId.addEventListener("input", async function(e) {
 	// Show loading state immediately
@@ -2171,6 +2428,97 @@ function chatModerate(mode, senderId, messageId = null, messageElement = null) {
 			break;
 	}
 }
+
+function renderModerationReview() {
+	moderationReviewList.replaceChildren();
+	const records = moderationReviewRecords.get(moderationReviewType) || [];
+	for (const record of records) {
+		const element = /** @type {import("./game-elements.js").PunishmentRecordElement} */(
+			document.createElement("r-punishment-record"));
+		element.record = record;
+		moderationReviewList.append(element);
+	}
+	if (records.length > 0) moderationReviewStatus.textContent = "";
+	else if (!moderationReviewLoading.has(moderationReviewType) &&
+		moderationReviewStatus.textContent === "Loading punishment records...") {
+		moderationReviewStatus.textContent = `No ${moderationReviewType} records found.`;
+	}
+	moderationReviewMoreButton.hidden = !moderationReviewHasMore.get(moderationReviewType);
+	moderationReviewMoreButton.disabled = moderationReviewLoading.has(moderationReviewType);
+}
+
+async function loadModerationReview(reset=false) {
+	const type = moderationReviewType;
+	if (moderationReviewLoading.has(type)) return;
+	moderationReviewLoading.add(type);
+	if (reset) {
+		moderationReviewOffsets.set(type, 0);
+		moderationReviewRecords.set(type, []);
+	}
+	moderationReviewStatus.textContent = "Loading punishment records...";
+	moderationReviewMoreButton.disabled = true;
+	try {
+		const offset = moderationReviewOffsets.get(type) || 0;
+		const result = await listPunishments(type, offset, localStorage.vip);
+		if (type !== moderationReviewType) return;
+		const records = reset ? result.records : [
+			...(moderationReviewRecords.get(type) || []), ...result.records
+		];
+		moderationReviewRecords.set(type, records);
+		moderationReviewOffsets.set(type, result.nextOffset ?? offset + result.records.length);
+		moderationReviewHasMore.set(type, Boolean(result.hasMore));
+		moderationReviewStatus.textContent = "";
+	}
+	catch (error) {
+		if (type === moderationReviewType) {
+			moderationReviewStatus.textContent = error instanceof Error
+				? error.message : "Could not load punishment records.";
+		}
+	}
+	finally {
+		moderationReviewLoading.delete(type);
+		if (type === moderationReviewType) renderModerationReview();
+	}
+}
+
+/** @param {"mute"|"ban"} type */
+function selectModerationReviewType(type) {
+	moderationReviewType = type;
+	moderationMutesTab.setAttribute("aria-selected", String(type === "mute"));
+	moderationBansTab.setAttribute("aria-selected", String(type === "ban"));
+	void loadModerationReview(true);
+}
+
+function openModerationReview() {
+	if (!moderationReviewDialog.open) moderationReviewDialog.showModal();
+	selectModerationReviewType(moderationReviewType);
+}
+
+moderationReviewCloseButton.addEventListener("click", () => moderationReviewDialog.close());
+moderationMutesTab.addEventListener("click", () => selectModerationReviewType("mute"));
+moderationBansTab.addEventListener("click", () => selectModerationReviewType("ban"));
+moderationReviewMoreButton.addEventListener("click", () => void loadModerationReview(false));
+moderationReviewList.addEventListener("appeal-decision", async event => {
+	if (!(event instanceof CustomEvent)) return;
+	const recordElement = /** @type {import("./game-elements.js").PunishmentRecordElement|undefined} */(
+		event.composedPath().find(element =>
+			element instanceof HTMLElement && element.tagName === "R-PUNISHMENT-RECORD"));
+	if (!recordElement) return;
+	recordElement.busy = true;
+	let reloadAfterFailure = false;
+	try {
+		await resolvePunishmentAppeal(event.detail.type, event.detail.punishmentId,
+			event.detail.decision, event.detail.response, localStorage.vip);
+		await loadModerationReview(true);
+	}
+	catch (error) {
+		recordElement.busy = false;
+		recordElement.errorMessage = error instanceof Error ? error.message : "Could not resolve appeal.";
+		reloadAfterFailure = typeof error === "object" && error !== null &&
+			"status" in error && error.status === 409;
+	}
+	if (reloadAfterFailure) await loadModerationReview(true);
+});
 
 // Chat messages UI
 function closeMessageEmojisPanel() {

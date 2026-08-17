@@ -493,3 +493,163 @@ export class PlaceChat extends LitElement {
 	}
 }
 customElements.define("r-place-chat", PlaceChat);
+
+export class PunishmentRecordElement extends LitElement {
+	static properties = {
+		record: { attribute:false },
+		busy: { type:Boolean, state:true },
+		response: { type:String, state:true },
+		errorMessage: { type:String, state:true }
+	};
+
+	constructor() {
+		super();
+		/** @type {import("./moderation-api.js").PunishmentRecord|null} */
+		this.record = null;
+		this.busy = false;
+		this.response = "";
+		this.errorMessage = "";
+	}
+
+	connectedCallback() {
+		super.connectedCallback();
+		this.setAttribute("role", "listitem");
+	}
+
+	createRenderRoot() {
+		return this;
+	}
+
+	/** @param {string|null} name @param {number|null} intId */
+	#person(name, intId) {
+		if (typeof intId !== "number" || !Number.isInteger(intId) || intId < 0) return "Unknown moderator";
+		return `${name || "anon"} (#${intId})`;
+	}
+
+	/** @param {number|null} value */
+	#date(value) {
+		return typeof value === "number" && Number.isFinite(value)
+			? new Date(value).toLocaleString() : "Unknown";
+	}
+
+	#status() {
+		if (!this.record || this.record.finishDate <= Date.now()) return "Expired";
+		return "Active";
+	}
+
+	/**
+	 * @param {"left"|"right"} displaySide
+	 * @param {string} content
+	 * @param {number|null} date
+	 * @param {number|null} senderIntId
+	 * @param {string|null} senderChatName
+	 * @param {string} unknownName
+	 */
+	#renderAppealMessage(displaySide, content, date, senderIntId, senderChatName, unknownName) {
+		const knownSender = typeof senderIntId === "number" && Number.isInteger(senderIntId) && senderIntId >= 0;
+		const sendDate = typeof date === "number" && Number.isFinite(date) ? date / 1000 : 0;
+		return html`
+			<r-live-chat-message
+				data-display-side=${displaySide} data-explicit-time=${this.#date(date)}
+				.messageId=${-1} .content=${content}
+				.senderIntId=${knownSender ? senderIntId : -1}
+				.senderChatName=${knownSender ? senderChatName : unknownName}
+				.sendDate=${sendDate}>
+			</r-live-chat-message>`;
+	}
+
+	/** @param {"approved"|"denied"} decision */
+	#submit(decision) {
+		if (!this.record) return;
+		const response = this.response.trim();
+		const byteLength = new TextEncoder().encode(response).byteLength;
+		if (byteLength === 0 || byteLength > 1000) {
+			this.errorMessage = "Enter a response no longer than 1000 bytes.";
+			return;
+		}
+		this.errorMessage = "";
+		this.dispatchEvent(new CustomEvent("appeal-decision", {
+			bubbles:true,
+			composed:true,
+			detail:{
+				type:this.record.type,
+				punishmentId:this.record.punishmentId,
+				decision,
+				response
+			}
+		}));
+	}
+
+	#renderAppeal() {
+		if (!this.record?.appealMessage) return null;
+		const pending = this.record.appealStatus === "pending";
+		return html`
+			<section class="punishment-appeal-review">
+				<div class="chat-message-list appeal-conversation">
+					${this.#renderAppealMessage("left", this.record.appealMessage,
+						this.record.appealSubmittedAt, this.record.userIntId,
+						this.record.userChatName, "Unknown player")}
+					${pending ? null : this.#renderAppealMessage("right",
+						this.record.appealResponse || "No response was recorded.",
+						this.record.appealRespondedAt, this.record.appealResponderIntId,
+						this.record.appealResponderChatName, "Unknown moderator")}
+				</div>
+				${pending ? html`
+					<label class="appeal-response-field">
+						<span>Moderator response</span>
+						<textarea .value=${this.response} ?disabled=${this.busy}
+							@input=${(/** @type {InputEvent} */e) => {
+								if (e.currentTarget instanceof HTMLTextAreaElement) this.response = e.currentTarget.value;
+								this.errorMessage = "";
+							}}
+							placeholder="Explain the decision" maxlength="1000"></textarea>
+					</label>
+					${this.errorMessage ? html`<p class="appeal-error" role="alert">${this.errorMessage}</p>` : null}
+					<div class="appeal-decision-actions">
+						<button type="button" class="appeal-approve" ?disabled=${this.busy}
+							@click=${() => this.#submit("approved")}>Approve</button>
+						<button type="button" class="appeal-deny" ?disabled=${this.busy}
+							@click=${() => this.#submit("denied")}>Deny</button>
+					</div>` : html`
+					<p class="appeal-decision appeal-decision-${this.record.appealStatus}">
+						Appeal ${this.record.appealStatus}
+					</p>`}
+			</section>`;
+	}
+
+	#renderSummary() {
+		if (!this.record) return null;
+		return html`
+			<div class="punishment-record-summary">
+				<div>
+					<span class="punishment-record-label">${this.record.type}</span>
+					<strong>Punishment #${this.record.punishmentId}</strong>
+					<span class="punishment-record-state ${this.#status().toLowerCase()}">${this.#status()}</span>
+				</div>
+				<dl>
+					<div><dt>User</dt><dd>${this.#person(this.record.userChatName, this.record.userIntId)}</dd></div>
+					<div><dt>Issued by</dt><dd>${this.#person(this.record.moderatorChatName, this.record.moderatorIntId)}</dd></div>
+					<div><dt>Started</dt><dd>${this.#date(this.record.startDate)}</dd></div>
+					<div><dt>Ends</dt><dd>${this.#date(this.record.finishDate)}</dd></div>
+				</dl>
+				<div class="punishment-record-reason"><strong>Reason</strong><p>${this.record.reason}</p></div>
+			</div>`;
+	}
+
+	render() {
+		if (!this.record) return null;
+		const summary = this.#renderSummary();
+		if (this.record.appealMessage) {
+			return html`
+				<details class="punishment-record-card">
+					<summary>${summary}</summary>
+					${this.#renderAppeal()}
+				</details>`;
+		}
+		return html`
+			<article class="punishment-record-card">
+				${summary}
+			</article>`;
+	}
+}
+customElements.define("r-punishment-record", PunishmentRecordElement);

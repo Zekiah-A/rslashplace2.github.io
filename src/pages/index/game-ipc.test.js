@@ -89,6 +89,7 @@ describe("page game IPC adapter", () => {
 			"fetchLinkKey",
 			"putPixel",
 			"reportAutomatedActivity",
+			"reportCanvasPixel",
 			"requestChatHistory",
 			"requestPixelPlacers",
 			"sendCaptchaResult",
@@ -532,6 +533,9 @@ describe("page game IPC adapter", () => {
 		ipc.reportAutomatedActivity([1, 2, 3, 4, 5]);
 		ipc.sendCaptchaResult(7, "answer");
 		ipc.putPixel(9, 3);
+		expect(() => ipc.reportCanvasPixel(9, "botting")).toThrow(
+			"Canvas pixel reports require the official server"
+		);
 		ipc.stop();
 		ipc.stop();
 
@@ -1038,6 +1042,41 @@ describe("page game IPC adapter", () => {
 		expect(received).toEqual([["delete", 9], ["reaction", [7, 8, "👍"]]]);
 		expect(() => ipc.chatReact(-1, "")).toThrow();
 		expect(() => ipc.chatReport(7, "")).toThrow();
+		ipc.dispose();
+		workerEndpoint.dispose();
+	});
+
+	test("sends only bounded strict canvas pixel reports while open", async () => {
+		let workerEndpoint;
+		const reports = [];
+		const worker = {
+			postMessage(data, ports) {
+				workerEndpoint = createTestWorkerEndpoint(data, ports[0], {
+					incoming: new Map([
+						[2, { kind: "message", validate: () => true, handler: () => workerEndpoint.send(1) }],
+						[19, { kind: "message", validate: () => true, handler: value => reports.push(value) }]
+					]),
+					outgoing: new Map([
+						[0, { kind: "message", validate: value => value === undefined }],
+						[1, { kind: "message", validate: value => value === undefined }]
+					])
+				});
+				workerEndpoint.send(0);
+			},
+			terminate() { throw new Error("strict canvas report unexpectedly terminated"); }
+		};
+		const ipc = await createGameIpc(
+			worker, "wss://server.rplace.live", "wss://server.rplace.live", 100
+		);
+		expect(() => ipc.reportCanvasPixel(1, "botting")).toThrow();
+		ipc.connect("device", null);
+		await tick();
+		ipc.reportCanvasPixel(0xFFFF_FFFF, "botting");
+		await tick();
+		expect(reports).toEqual([[0xFFFF_FFFF, "botting"]]);
+		expect(() => ipc.reportCanvasPixel(-1, "botting")).toThrow();
+		expect(() => ipc.reportCanvasPixel(1, " ")).toThrow();
+		expect(() => ipc.reportCanvasPixel(1, "😀".repeat(71))).toThrow();
 		ipc.dispose();
 		workerEndpoint.dispose();
 	});

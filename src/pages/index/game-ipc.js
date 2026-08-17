@@ -3,7 +3,7 @@ import { createStrictIpcEndpoint, makeIpcRequest, sendIpcMessage } from "shared-
 /** @typedef {[number, number, number, number, number]} ClientActivity */
 /** @typedef {[string, string, string|null]} ConnectArgs */
 /** @typedef {[number, string[], Uint8Array]} DefaultCaptchaChallenge */
-/** @typedef {{ chatReact: (messageId: number, reaction: string) => void, chatReport: (messageId: number, reason: string) => void, connect: (device: string, vip: string|null) => void, fetchLinkKey: () => Promise<{linkKey:string,instanceId:number}>, putPixel: (position: number, colour: number) => void, reportAutomatedActivity: (activity: ClientActivity) => void, requestChatHistory: (channel: string, anchorMsgId?: number, msgCount?: number) => void, requestPixelPlacers: (position: number, width: number, height: number) => void, sendCaptchaResult: (captchaId: number, result: string) => void, sendChallengeResult: (result: bigint) => void, sendHCaptchaResult: (captchaId: number, result: string) => void, sendLiveChat: (message: string, channel: string, replyId: number|null) => void, sendModAction: (value: object) => Promise<string>, sendPlaceChat: (message: string, position: number) => void, sendTurnstileResult: (captchaId: number, result: string) => void, setName: (name: string) => void, spectateUser: (userId: number) => void, unspectateUser: () => void, stop: () => void, dispose: () => void }} GameIpc */
+/** @typedef {{ chatReact: (messageId: number, reaction: string) => void, chatReport: (messageId: number, reason: string) => void, connect: (device: string, vip: string|null) => void, fetchLinkKey: () => Promise<{linkKey:string,instanceId:number}>, putPixel: (position: number, colour: number) => void, reportAutomatedActivity: (activity: ClientActivity) => void, reportCanvasPixel: (position: number, reason: string) => void, requestChatHistory: (channel: string, anchorMsgId?: number, msgCount?: number) => void, requestPixelPlacers: (position: number, width: number, height: number) => void, sendCaptchaResult: (captchaId: number, result: string) => void, sendChallengeResult: (result: bigint) => void, sendHCaptchaResult: (captchaId: number, result: string) => void, sendLiveChat: (message: string, channel: string, replyId: number|null) => void, sendModAction: (value: object) => Promise<string>, sendPlaceChat: (message: string, position: number) => void, sendTurnstileResult: (captchaId: number, result: string) => void, setName: (name: string) => void, spectateUser: (userId: number) => void, unspectateUser: () => void, stop: () => void, dispose: () => void }} GameIpc */
 const MAX_DATE_MS = 8_640_000_000_000_000;
 const textEncoder = new TextEncoder();
 
@@ -107,6 +107,13 @@ function isChatReport(value) {
 	return Array.isArray(value) && value.length === 2 &&
 		isUint32(value[0]) && typeof value[1] === "string" &&
 		value[1].length > 0;
+}
+
+function isCanvasPixelReport(value) {
+	return Array.isArray(value) && value.length === 2 &&
+		isUint32(value[0]) && typeof value[1] === "string" &&
+		value[1].trim().length > 0 &&
+		textEncoder.encode(value[1]).byteLength <= 280;
 }
 
 function isLiveChatSubmission(value) {
@@ -509,6 +516,10 @@ export async function createGameIpc(
 				if (!isChatReport(value)) throw new TypeError("Invalid chat report");
 				sendIpcMessage(/** @type {Worker} */(worker), "chatReport", { messageId, reason });
 			},
+			reportCanvasPixel() {
+				if (disposed) throw new Error("Game IPC endpoint is closed");
+				throw new Error("Canvas pixel reports require the official server");
+			},
 			sendLiveChat(message, channel, replyId) {
 				if (disposed) throw new Error("Game IPC endpoint is closed");
 				const value = [message, channel, replyId];
@@ -861,6 +872,9 @@ export async function createGameIpc(
 		kind: "request",
 		validate: isModAction,
 		validateResult: value => typeof value === "string"
+	}], [19, {
+		kind: "message",
+		validate: isCanvasPixelReport
 	}]]);
 	let timeout;
 	const timeoutPromise = new Promise((_, reject) => {
@@ -1029,6 +1043,14 @@ export async function createGameIpc(
 				throw new Error("Chat report is not valid");
 			}
 			endpoint.send(9, value);
+		},
+		reportCanvasPixel(position, reason) {
+			if (disposed) throw new Error("Game IPC endpoint is closed");
+			const value = [position, reason];
+			if (connectionState !== 2 || !isCanvasPixelReport(value)) {
+				throw new Error("Canvas pixel report is not valid");
+			}
+			endpoint.send(19, value);
 		},
 		sendLiveChat(message, channel, replyId) {
 			if (disposed) throw new Error("Game IPC endpoint is closed");
