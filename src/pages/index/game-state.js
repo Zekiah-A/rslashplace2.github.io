@@ -98,6 +98,8 @@ const wsCapsule = new Worker(url, {
 	type: "module"
 });
 let defaultCaptchaHandlers;
+/** @type {[string, number|undefined, number|undefined]|null} */
+let pendingChatHistoryRequest = null;
 const gameIpc = await createGameIpc(
 	wsCapsule,
 	selectedServer,
@@ -164,6 +166,11 @@ const automatedActivityFlags =
 
 function handleGameConnect() {
 	connectStatus = "connected";
+	if (pendingChatHistoryRequest) {
+		const request = pendingChatHistoryRequest;
+		pendingChatHistoryRequest = null;
+		gameIpc.requestChatHistory(...request);
+	}
 }
 addIpcMessageHandler("handleConnect", handleGameConnect);
 function handleStrictPalette(/**@type {[number[],number,number]}*/[palette, start, end]) {
@@ -634,6 +641,10 @@ export function sendServerMessage(name, args=undefined, event=undefined) {
 		return;
 	}
 	if (name === "requestLoadChannelPrevious") {
+		if (connectStatus !== "connected") {
+			pendingChatHistoryRequest = [args.channel, args.anchorMsgId, args.msgCount];
+			return;
+		}
 		gameIpc.requestChatHistory(args.channel, args.anchorMsgId, args.msgCount);
 		return;
 	}
