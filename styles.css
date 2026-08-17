@@ -338,6 +338,376 @@ r-close-icon {
 	margin: 0px 0px 20px;
 }
 
+.placer-info-modal {
+	width: min(320px, calc(100vw - 32px));
+}
+
+.placer-info-content {
+	margin-bottom: 0;
+}
+
+.placer-info-content > p {
+	margin: 0;
+}
+
+.placer-info-details {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin: 0;
+}
+
+.placer-info-details[hidden] {
+	display: none;
+}
+
+.placer-info-details > div {
+	display: flex;
+	justify-content: space-between;
+	gap: 24px;
+}
+
+.placer-info-details dt {
+	opacity: 0.65;
+}
+
+.placer-info-details dd {
+	margin: 0;
+	text-align: right;
+	overflow-wrap: anywhere;
+}
+
+.canvas-report-modal {
+	width: min(420px, calc(100vw - 32px));
+}
+
+.canvas-report-form,
+.canvas-report-content {
+	display: flex;
+	flex-direction: column;
+}
+
+.canvas-report-content {
+	gap: 8px;
+}
+
+.canvas-report-content textarea {
+	width: 100%;
+	min-height: 112px;
+	padding: 8px;
+	resize: vertical;
+}
+
+#canvasReportLimit {
+	align-self: flex-end;
+	opacity: 0.65;
+}
+
+#canvasReportStatus {
+	margin: 4px 0 0;
+}
+
+.canvas-report-actions {
+	display: flex;
+	gap: 8px;
+}
+
+.canvas-report-actions > button {
+	flex-grow: 1;
+}
+
+.punishment-appeal-form {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.punishment-appeal-form textarea,
+.appeal-response-field textarea {
+	width: 100%;
+	min-height: 88px;
+	padding: 8px;
+	resize: vertical;
+}
+
+.punishment-appeal-submit-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.punishment-appeal-submit-row small {
+	opacity: 0.65;
+}
+
+.moderation-review-modal {
+	width: min(1280px, calc(100vw - 32px));
+	max-width: none;
+	height: min(820px, calc(100vh - 32px));
+	max-height: none;
+	padding: 20px;
+	overflow: hidden;
+	color: var(--ui-text);
+	background: var(--ui-panel-bg);
+}
+
+.moderation-review-header {
+	margin-bottom: 12px;
+}
+
+.moderation-review-header p {
+	font-family: reddit;
+	opacity: 0.7;
+	margin-top: 4px;
+}
+
+.tab-bar {
+	display: grid;
+	grid-auto-flow: column;
+	grid-auto-columns: 1fr;
+	border-radius: 10px;
+	margin-bottom: 12px;
+	padding: 4px;
+	gap: 8px;
+	background: var(--ui-panel-bg);
+}
+
+.tab-bar > button {
+	border: 0 !important;
+	min-width: 0;
+}
+
+.tab-bar > button[aria-selected="true"] {
+	background-color: var(--reddit-orangered);
+	color: white;
+}
+
+#moderationReviewStatus {
+	min-height: 18px;
+	margin-bottom: 8px;
+}
+
+.moderation-review-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-height: 0;
+	flex: 1;
+	overflow: auto;
+	padding: 1px 4px 8px 1px;
+}
+
+#moderationReviewMoreButton {
+	margin-top: 8px;
+}
+
+r-punishment-record {
+	display: block;
+}
+
+.punishment-record-card {
+	border: 1px solid var(--ui-panel-hover, #aaa);
+	border-radius: 8px;
+	overflow: hidden;
+	background: var(--ui-panel-bg);
+}
+
+details.punishment-record-card > summary {
+	position: relative;
+	list-style: none;
+	cursor: pointer;
+}
+
+details.punishment-record-card > summary::-webkit-details-marker {
+	display: none;
+}
+
+details.punishment-record-card > summary::after {
+	content: "›";
+	position: absolute;
+	top: 50%;
+	right: 16px;
+	font-size: 24px;
+	line-height: 1;
+	transform: translateY(-50%);
+	transition: transform 0.15s ease;
+}
+
+details.punishment-record-card[open] > summary::after {
+	transform: translateY(-50%) rotate(90deg);
+}
+
+details.punishment-record-card > summary > .punishment-record-summary {
+	padding-right: 48px;
+}
+
+.punishment-record-summary {
+	display: grid;
+	grid-template-columns: minmax(150px, 0.7fr) minmax(330px, 1.5fr) minmax(180px, 1fr);
+	gap: 16px;
+	align-items: start;
+	padding: 14px;
+}
+
+.punishment-record-summary > div:first-child {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 5px;
+}
+
+.punishment-record-label,
+.punishment-record-state,
+.appeal-decision {
+	border: 1px solid currentColor;
+	border-radius: 999px;
+	padding: 2px 7px;
+	font-size: 12px;
+	text-transform: capitalize;
+}
+
+.punishment-record-state.expired {
+	opacity: 0.55;
+}
+
+.punishment-record-summary dl {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px 14px;
+}
+
+.punishment-record-summary dl > div {
+	min-width: 0;
+}
+
+.punishment-record-summary dt {
+	font-size: 12px;
+	opacity: 0.65;
+}
+
+.punishment-record-summary dd {
+	margin: 2px 0 0;
+	overflow-wrap: anywhere;
+}
+
+.punishment-record-reason p {
+	font-family: reddit;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	margin-top: 4px;
+}
+
+.punishment-appeal-review {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 14px;
+	border-top: 1px solid var(--ui-panel-hover, #aaa);
+	background: color-mix(in srgb, var(--ui-panel-hover, #ddd) 22%, transparent);
+}
+
+.appeal-conversation {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.appeal-conversation[hidden] {
+	display: none;
+}
+
+.appeal-conversation > .message {
+	width: fit-content;
+	max-width: min(90%, 650px);
+	padding: 4px 6px;
+}
+
+.chat-message-list > .message[data-display-side="left"] {
+	align-self: flex-start;
+}
+
+.chat-message-list > .message[data-display-side="right"] {
+	align-self: flex-end;
+	direction: rtl;
+	text-align: right;
+}
+
+.chat-message-list > .message[data-display-side="right"] > * {
+	direction: ltr;
+	unicode-bidi: isolate;
+}
+
+.chat-message-list > .message[data-explicit-time]::after {
+	content: attr(data-explicit-time);
+	display: block;
+	direction: ltr;
+	unicode-bidi: isolate;
+	font-size: 11px;
+	opacity: 0.6;
+	margin-top: 2px;
+}
+
+.chat-message-list.appeal-conversation > .message > .name {
+	cursor: default;
+}
+
+.appeal-response-field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.appeal-decision-actions {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px;
+}
+
+.appeal-approve {
+	background: #287a3d;
+	color: white;
+}
+
+.appeal-deny {
+	background: #a62b2b;
+	color: white;
+}
+
+.appeal-error {
+	color: #c52b2b;
+}
+
+.appeal-decision {
+	align-self: flex-end;
+	width: fit-content;
+}
+
+.appeal-decision-approved {
+	color: #287a3d;
+}
+
+.appeal-decision-denied {
+	color: #a62b2b;
+}
+
+@media (max-width: 720px) {
+	.moderation-review-modal {
+		width: calc(100vw - 16px);
+		height: calc(100vh - 16px);
+		padding: 12px;
+	}
+
+	.punishment-record-summary {
+		grid-template-columns: 1fr;
+		gap: 12px;
+	}
+
+	.appeal-conversation > .message {
+		max-width: 92%;
+	}
+}
+
 .modal-footer {
 	margin-top: 16px;
 	display: flex;
@@ -849,40 +1219,43 @@ body[eventphase="3"] .coverer-title {
 	pointer-events: none;
 }
 
-#chatMessages {
+.chat-message-list {
 	overflow-wrap: break-word;
 	word-wrap: break-word;
 	font-family: mono;
 	white-space: pre-wrap;
+}
+
+#chatMessages {
 	overflow: auto;
 	flex-grow: 1;
 }
 
-#chatMessages > .message {
+.chat-message-list > .message {
 	position: relative;
 	display: block;
 	white-space: collapse;
 	transition: .2s background-color;
 }
 
-#chatMessages > .message:hover {
+.chat-message-list > .message:hover {
 	background-color: #d3d3d333;
 	border-radius: 4px;
 }
 
-#chatMessages > .message[highlight] {
+.chat-message-list > .message[highlight] {
 	background-color: #4dd77780;
 }
 
-#chatMessages > .message[mention] {
+.chat-message-list > .message[mention] {
 	background-color: #ffff0080;
 }
 
-#chatMessages > .message[reply] {
+.chat-message-list > .message[reply] {
 	background-color: #e4efff;
 }
 
-#chatMessages > .message > p {
+.chat-message-list > .message > p {
 	border-left: 4px solid gray;
 	padding: 2px 4px 2px 8px;
 	font-size: 12px;
@@ -893,11 +1266,11 @@ body[eventphase="3"] .coverer-title {
 	border-radius: 2px 0px 0px 0px;
 }
 
-#chatMessages > .message > span:nth-of-type(1) {
+.chat-message-list > .message > span:nth-of-type(1) {
 	cursor: pointer;
 }
 
-#chatMessages > .message > .actions {
+.chat-message-list > .message > .actions {
 	position: absolute;
 	right: 0px;
 	top: -4px;
@@ -914,7 +1287,7 @@ body[eventphase="3"] .coverer-title {
 	transition: .2s opacity;
 }
 
-#chatMessages > .message:hover > .actions {
+.chat-message-list > .message:hover > .actions {
 	opacity: 1;
 	cursor: pointer;
 }

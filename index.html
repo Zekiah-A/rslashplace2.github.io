@@ -189,7 +189,7 @@
 				</a>
 				<span id="adLabel" style="display: none; opacity: 0; align-self: center;" translate="adHidden">Ad hidden for 14 days!</span>
 				<button type="button" id="chatPreviousButton" class="horizontal-labeled-separator" noselect><hr><span>See previous messages</span><hr></button>
-				<div id="chatMessages"><!--Live chat messages--></div>
+				<div id="chatMessages" class="chat-message-list"><!--Live chat messages--></div>
 				<div id="messageTypePanel" class="chat-input-panel" closed>
 					<input type="button" class="messageTypeBtn" title="Use the shortcut 'ctrl+enter' to send quickly" style="left: 5px;" translate="putOnCanvas" value="🫧 Put on canvas">
 					<input type="button" class="messageTypeBtn" title="Use the shortcut 'enter' to send quickly" style="right: 5px;" translate="sendInLiveChat" value="📨 Send in live chat">
@@ -399,6 +399,16 @@
 							<p id="punishmentUserId"></p>
 							<p id="punishmentReason"></p>
 							<p id="punishmentAppeal"></p>
+							<div id="punishmentAppealConversation" class="chat-message-list appeal-conversation" hidden></div>
+							<form id="punishmentAppealForm" class="punishment-appeal-form" hidden>
+								<label for="punishmentAppealMessage">Appeal</label>
+								<textarea id="punishmentAppealMessage" maxlength="1000" required
+									placeholder="Explain why this punishment should be reviewed"></textarea>
+								<div class="punishment-appeal-submit-row">
+									<small id="punishmentAppealLimit">0 / 1000 bytes</small>
+									<button id="punishmentAppealSubmitButton" type="submit" disabled>Submit appeal</button>
+								</div>
+							</form>
 						</div>
 					</div>
 				</div>
@@ -465,6 +475,22 @@
 					</div>
 				</div>
 			</div>
+			<dialog id="moderationReviewDialog" class="dialog-modal moderation-review-modal" aria-labelledby="moderationReviewTitle">
+				<div class="modal-header moderation-review-header">
+					<div>
+						<h2 id="moderationReviewTitle">Punishment review</h2>
+						<p>Review mute and ban records and respond to appeals.</p>
+					</div>
+					<r-close-icon id="moderationReviewCloseButton"></r-close-icon>
+				</div>
+				<nav class="tab-bar" role="tablist" aria-label="Punishment type">
+					<button id="moderationMutesTab" type="button" role="tab" aria-selected="true">Mutes</button>
+					<button id="moderationBansTab" type="button" role="tab" aria-selected="false">Bans</button>
+				</nav>
+				<p id="moderationReviewStatus" role="status"></p>
+				<div id="moderationReviewList" class="moderation-review-list" role="list"></div>
+				<button id="moderationReviewMoreButton" type="button" hidden>Load 50 more</button>
+			</dialog>
 			<dialog id="captchaPopup" class="modal">
 				<div>
 					<canvas id="captchaCanvas" width="500" height="800"></canvas>
@@ -483,6 +509,49 @@
 					<span noselect id="popupTitle" style="font-size: 1.2em; font-weight: bold;"></span>
 					<iframe id="popupEmbed"></iframe>
 				</div>
+			</dialog>
+			<dialog id="placerInfoDialog" class="modal placer-info-modal" aria-labelledby="placerInfoTitle">
+				<div class="modal-header">
+					<h2 id="placerInfoTitle">Pixel placer info</h2>
+					<r-close-icon id="placerInfoCloseButton"></r-close-icon>
+				</div>
+				<div class="modal-content placer-info-content">
+					<p id="placerInfoStatus" role="status">Looking up placer information...</p>
+					<dl id="placerInfoDetails" class="placer-info-details" hidden>
+						<div>
+							<dt>Position</dt>
+							<dd id="placerInfoPosition"></dd>
+						</div>
+						<div>
+							<dt>Name</dt>
+							<dd id="placerInfoName"></dd>
+						</div>
+						<div>
+							<dt>User ID</dt>
+							<dd id="placerInfoUserId"></dd>
+						</div>
+					</dl>
+				</div>
+			</dialog>
+			<dialog id="canvasReportDialog" class="modal canvas-report-modal" aria-labelledby="canvasReportTitle">
+				<form id="canvasReportForm" class="canvas-report-form">
+					<div class="modal-header">
+						<h2 id="canvasReportTitle">Report pixel</h2>
+						<r-close-icon id="canvasReportCloseButton"></r-close-icon>
+					</div>
+					<div class="modal-content canvas-report-content">
+						<p>Report the player who placed the pixel at <strong id="canvasReportPosition"></strong>.</p>
+						<label for="canvasReportReason">Reason</label>
+						<textarea id="canvasReportReason" maxlength="280" required
+							placeholder="Describe what should be reviewed" aria-describedby="canvasReportLimit"></textarea>
+						<small id="canvasReportLimit">0 / 280 bytes</small>
+						<p id="canvasReportStatus" role="status" hidden></p>
+					</div>
+					<div class="canvas-report-actions">
+						<button id="canvasReportSubmitButton" type="submit" disabled>Submit report</button>
+						<button id="canvasReportCancelButton" type="button">Cancel</button>
+					</div>
+				</form>
 			</dialog>
 			<dialog id="modal" class="modal about-modal">
 				<div class="modal-header">

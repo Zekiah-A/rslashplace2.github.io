@@ -1,7 +1,7 @@
 "use strict";
 import { DEFAULT_BOARD, DEFAULT_BOARD_FALLBACK, DEFAULT_COOLDOWN, DEFAULT_HEIGHT, DEFAULT_PALETTE, DEFAULT_PALETTE_USABLE_REGION, DEFAULT_SERVER, DEFAULT_WIDTH, PLACEMENT_MODE, RENDERER_TYPE } from "../../defaults";
 import { addIpcMessageHandler, handleIpcMessage, makeIpcRequest, sendIpcMessage } from "shared-ipc";
-import { createGameIpc } from "./game-ipc.js";
+import { createGameIpc, selectGameIpcMode } from "./game-ipc.js";
 
 // Types
 /**
@@ -87,6 +87,7 @@ export function setPlacementMode(value) {
 
 // WsCapsule logic & wscapsule message handlers
 const selectedServer = localStorage.server || DEFAULT_SERVER;
+export const supportsCanvasPixelReports = selectGameIpcMode(selectedServer, DEFAULT_SERVER) === "strict";
 const httpServerUrl = selectedServer
 	.replace("wss://", "https://").replace("ws://", "http://");
 // TODO: Find a better cache invalidation strategy for game worker
@@ -607,7 +608,7 @@ export function connect(device, vip = undefined) {
  * @param {Event} [event] 
  */
 export function sendServerMessage(name, args=undefined, event=undefined) {
-	const trustedMethods = [ "putPixel", "sendLiveChatMsg", "sendPlaceChatMsg" ]
+	const trustedMethods = [ "putPixel", "reportCanvasPixel", "sendLiveChatMsg", "sendPlaceChatMsg" ]
 	if (trustedMethods.includes(name) && (!(event instanceof Event) || !event?.isTrusted)) {
 		throw new Error("Trusted method event was invalid");
 	}
@@ -630,6 +631,10 @@ export function sendServerMessage(name, args=undefined, event=undefined) {
 	}
 	if (name === "chatReport") {
 		gameIpc.chatReport(args.messageId, args.reason);
+		return;
+	}
+	if (name === "reportCanvasPixel") {
+		gameIpc.reportCanvasPixel(args.position, args.reason);
 		return;
 	}
 	if (name === "sendLiveChatMsg") {
