@@ -548,8 +548,12 @@ export class BoardRenderer extends EventTarget {
 		const projection = this._projectionMatrix;  
 		const mvp = this._mvpMatrix;
 
-		// Calculate canvas translation & scale
-		const scale = 1 / (this._z * 50 * this._devicePixelRatio) + 0.01;
+		// Match the Canvas2D viewport transform, where zoom is measured in CSS
+		// pixels per board pixel. The WebGL canvas uses drawing-buffer pixels, so
+		// account for both the viewport and board dimensions on each axis.
+		const pixelsPerBoardPixel = this._z * 50 * this._devicePixelRatio;
+		const scaleX = this.canvas.width / (this._boardWidth * pixelsPerBoardPixel);
+		const scaleY = this.canvas.height / (this._boardHeight * pixelsPerBoardPixel);
 		const ndcX = -(this._x - this._boardWidth / 2) / (this._boardWidth / 2);
 		const ndcY = (this._y - this._boardHeight / 2) / (this._boardHeight / 2);
 
@@ -562,10 +566,9 @@ export class BoardRenderer extends EventTarget {
 		mat4.translate(view, view, [ndcX, ndcY, 0]);
 
 		// Set up projection matrix (zooming)
-		const aspect = this.canvas.width / this.canvas.height;
 		mat4.ortho(projection,
-			-aspect * scale, aspect * scale, // Left right
-			-scale, scale, // Bottom top
+			-scaleX, scaleX, // Left right
+			-scaleY, scaleY, // Bottom top
 			-1, 1 // Clipping plane
 		);
 
@@ -795,7 +798,7 @@ export class BoardRenderer extends EventTarget {
 	 * @param {number} screenY 
 	 * @returns 
 	 */
-	#screenToGameCoords(screenX, screenY) {
+	_screenToGameCoords(screenX, screenY) {
 		// Ensure matrices are up to date
 		this._updateMatrices();
 		
@@ -842,8 +845,8 @@ export class BoardRenderer extends EventTarget {
 		const ndcX = clipPoint[0] / clipPoint[3];
 		const ndcY = clipPoint[1] / clipPoint[3];
 
-		const screenX = (ndcX + 1) / 2 * (this.canvas.width) * this._devicePixelRatio;
-		const screenY = (1 - ndcY) / 2 * (this.canvas.height) * this._devicePixelRatio;
+		const screenX = (ndcX + 1) / 2 * (this.canvas.width / this._devicePixelRatio);
+		const screenY = (1 - ndcY) / 2 * (this.canvas.height / this._devicePixelRatio);
 
 		return {
 			x: screenX,
@@ -859,10 +862,10 @@ export class BoardRenderer extends EventTarget {
 	hitTest(clientX, clientY) {
 		const gl = this._gl;
 		const rect = this.canvas.getBoundingClientRect();
-		const mouseX = Math.floor((clientX - rect.left) * (gl.drawingBufferWidth / rect.width));
-		const mouseY = Math.floor((clientY - rect.top) * (gl.drawingBufferHeight / rect.height));
+		const mouseX = (clientX - rect.left) * (gl.drawingBufferWidth / rect.width);
+		const mouseY = (clientY - rect.top) * (gl.drawingBufferHeight / rect.height);
 
-		const { x: modelX, y: modelY } = this.#screenToGameCoords(mouseX, mouseY);
+		const { x: modelX, y: modelY } = this._screenToGameCoords(mouseX, mouseY);
 		return {
 			x: (modelX + 1) / 2 * this._boardWidth,
 			y: (2 - (modelY + 1)) / 2 * this._boardHeight
