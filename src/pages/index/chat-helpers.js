@@ -3,6 +3,9 @@ function escapeRegExp(value) {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** @typedef {{ start: number; end: number; label: string; intId: number }} MentionToken */
+/** @typedef {{ start: number; oldEnd: number; newEnd: number }} TextEdit */
+
 /**
  * @param {string} content
  * @param {string|null|undefined} chatName
@@ -48,6 +51,78 @@ export function findMentionQuery(value, cursor) {
 		start: boundedCursor - match[2].length - 1,
 		end: boundedCursor
 	};
+}
+
+/**
+ * @param {string} previousValue
+ * @param {string} nextValue
+ * @returns {TextEdit|null}
+ */
+export function findTextEdit(previousValue, nextValue) {
+	if (previousValue === nextValue) return null;
+	let start = 0;
+	while (start < previousValue.length && start < nextValue.length &&
+		previousValue[start] === nextValue[start]) {
+		start++;
+	}
+
+	let oldEnd = previousValue.length;
+	let newEnd = nextValue.length;
+	while (oldEnd > start && newEnd > start &&
+		previousValue[oldEnd - 1] === nextValue[newEnd - 1]) {
+		oldEnd--;
+		newEnd--;
+	}
+	return { start, oldEnd, newEnd };
+}
+
+/**
+ * @param {MentionToken[]} tokens
+ * @param {TextEdit|null} edit
+ * @returns {MentionToken[]}
+ */
+export function rebaseMentionTokens(tokens, edit) {
+	if (!edit) return tokens;
+	const offset = edit.newEnd - edit.oldEnd;
+	const rebased = [];
+	for (const token of tokens) {
+		if (token.end <= edit.start) {
+			rebased.push(token);
+		}
+		else if (token.start >= edit.oldEnd) {
+			rebased.push({ ...token, start: token.start + offset, end: token.end + offset });
+		}
+	}
+	return rebased;
+}
+
+/**
+ * @param {string} value
+ * @param {MentionToken[]} tokens
+ * @returns {string}
+ */
+export function serialiseMentionTokens(value, tokens) {
+	const validTokens = tokens
+		.filter(token => Number.isSafeInteger(token.start) && Number.isSafeInteger(token.end) &&
+			token.start >= 0 && token.end > token.start && token.end <= value.length &&
+			Number.isSafeInteger(token.intId) && token.intId > 0 && token.intId <= 0xFFFFFFFF &&
+			value.slice(token.start, token.end) === token.label)
+		.sort((first, second) => first.start - second.start);
+
+	let previousEnd = 0;
+	const nonOverlappingTokens = validTokens.filter(token => {
+		if (token.start < previousEnd) return false;
+		previousEnd = token.end;
+		return true;
+	});
+
+	let serialised = value;
+	for (let index = nonOverlappingTokens.length - 1; index >= 0; index--) {
+		const token = nonOverlappingTokens[index];
+		serialised = serialised.slice(0, token.start) + formatMention(token.intId) +
+			serialised.slice(token.end);
+	}
+	return serialised;
 }
 
 /** @param {(string|number)[]} list @returns {number[]} */

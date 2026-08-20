@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { findMentionQuery, formatMention, isBlocked, isMention, normaliseBlockedUsers } from "./chat-helpers.js";
+import { findMentionQuery, findTextEdit, formatMention, isBlocked, isMention,
+	normaliseBlockedUsers, rebaseMentionTokens, serialiseMentionTokens } from "./chat-helpers.js";
 
 describe("chat mention helpers", () => {
 	test("matches stable IDs, names and everyone at token boundaries", () => {
@@ -25,6 +26,42 @@ describe("chat mention helpers", () => {
 		expect(findMentionQuery("@", 1)).toEqual({ query: "", start: 0, end: 1 });
 		expect(findMentionQuery("test@ali", 8)).toBeNull();
 		expect(findMentionQuery("hello @#42", 10)).toBeNull();
+	});
+
+	test("rebases intact tokens through a contiguous edit", () => {
+		const tokens = [
+			{ start: 0, end: 6, label: "@alice", intId: 12 },
+			{ start: 10, end: 14, label: "@bob", intId: 23 }
+		];
+		const edit = findTextEdit("@alice hi @bob", "Well @alice hi @bob");
+		expect(edit).toEqual({ start: 0, oldEnd: 0, newEnd: 5 });
+		expect(rebaseMentionTokens(tokens, edit)).toEqual([
+			{ start: 5, end: 11, label: "@alice", intId: 12 },
+			{ start: 15, end: 19, label: "@bob", intId: 23 }
+		]);
+	});
+
+	test("drops only tokens touched by an edit", () => {
+		const tokens = [
+			{ start: 0, end: 6, label: "@alice", intId: 12 },
+			{ start: 10, end: 14, label: "@bob", intId: 23 }
+		];
+		const edit = findTextEdit("@alice hi @bob", "@alicia hi @bob");
+		expect(rebaseMentionTokens(tokens, edit)).toEqual([
+			{ start: 11, end: 15, label: "@bob", intId: 23 }
+		]);
+		expect(rebaseMentionTokens([tokens[0]], { start: 0, oldEnd: 6, newEnd: 6 })).toEqual([]);
+	});
+
+	test("serialises multiple intact vanity tokens from right to left", () => {
+		const value = "@alice met @alice and @bob";
+		const tokens = [
+			{ start: 0, end: 6, label: "@alice", intId: 12 },
+			{ start: 11, end: 17, label: "@alice", intId: 34 },
+			{ start: 22, end: 26, label: "@bob", intId: 23 }
+		];
+		expect(serialiseMentionTokens(value, tokens)).toBe("@#12 met @#34 and @#23");
+		expect(serialiseMentionTokens("@alicia", [tokens[0]])).toBe("@alicia");
 	});
 });
 

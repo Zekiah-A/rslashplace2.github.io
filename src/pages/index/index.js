@@ -14,7 +14,8 @@ import { theme } from "./game-themes.js";
 import { BOARD, canvasLocked, CHANGES, chatName, connectStatus, COOLDOWN, cooldownEndDate, HEIGHT, intId, intIdNames, intIdPositions, onCooldown, PALETTE, PALETTE_USABLE_REGION, passkeyAuthState, placementMode, RAW_BOARD, setCooldown, setPasskeyAuthState, setPlacementMode, SOCKET_PIXELS, supportsCanvasPixelReports, WIDTH, placePixel, sendDefaultCaptchaResult, sendServerMessage, setDefaultCaptchaHandlers, makeServerRequest, connect } from "./game-state.js";
 import { generateIndicators, generatePalette, hideIndicators, showPalette } from "./palette.js";
 import { authenticatePasskey, getPasskeyStatus, registerPasskey, supportsPasskeys } from "./passkeys.js";
-import { findMentionQuery, formatMention, isMention, normaliseBlockedUsers, isBlocked } from "./chat-helpers.js";
+import { findMentionQuery, findTextEdit, formatMention, isMention, normaliseBlockedUsers,
+	isBlocked, rebaseMentionTokens, serialiseMentionTokens } from "./chat-helpers.js";
 import "./popup.js";
 
 import FingerprintJS from "@fingerprintjs/fingerprintjs";
@@ -123,7 +124,8 @@ const passkeyMenu = /**@type {HTMLElement}*/($("#passkeyMenu"));
 const passkeyMenuTitle = /**@type {HTMLElement}*/($("#passkeyMenuTitle"));
 const passkeyMenuMessage = /**@type {HTMLElement}*/($("#passkeyMenuMessage"));
 const passkeyMenuButton = /**@type {HTMLButtonElement}*/($("#passkeyMenuButton"));
-const messageInput = /**@type {HTMLInputElement}*/($("#messageInput"));
+const messageInput = /**@type {HTMLTextAreaElement}*/($("#messageInput"));
+const messageInputMirror = /**@type {HTMLElement}*/($("#messageInputMirror"));
 const messageTypePanel = /**@type {HTMLElement}*/($("#messageTypePanel"));
 const messageInputGifPanel = /**@type {import("../../shared-elements.js").GifPanel}*/($("#messageInputGifPanel"));
 const messageReplyPanel = /**@type {HTMLElement}*/($("#messageReplyPanel"));
@@ -2118,6 +2120,71 @@ chatPreviousButton.addEventListener("click", () => {
 	chatPreviousAutoLoad = true	;
 })
 
+/** @type {import("./chat-helpers.js").MentionToken[]} */
+let messageMentionTokens = [];
+let previousMessageInputValue = messageInput.value;
+
+function renderMessageInputMirror() {
+	let previousTokenEnd = 0;
+	messageMentionTokens = messageMentionTokens
+		.filter(token => token.start >= 0 && token.end <= messageInput.value.length &&
+			messageInput.value.slice(token.start, token.end) === token.label)
+		.sort((first, second) => first.start - second.start)
+		.filter(token => {
+			if (token.start < previousTokenEnd) return false;
+			previousTokenEnd = token.end;
+			return true;
+		});
+
+	const fragment = document.createDocumentFragment();
+	let currentIndex = 0;
+	for (const token of messageMentionTokens) {
+		fragment.append(document.createTextNode(messageInput.value.slice(currentIndex, token.start)));
+		const highlight = document.createElement("span");
+		highlight.className = "linked-mention";
+		highlight.textContent = token.label;
+		fragment.append(highlight);
+		currentIndex = token.end;
+	}
+	fragment.append(document.createTextNode(messageInput.value.slice(currentIndex)));
+	messageInputMirror.replaceChildren(fragment);
+	messageInputMirror.scrollTop = messageInput.scrollTop;
+	messageInputMirror.scrollLeft = messageInput.scrollLeft;
+}
+
+function syncMessageInputValue() {
+	const nextValue = messageInput.value;
+	messageMentionTokens = rebaseMentionTokens(messageMentionTokens,
+		findTextEdit(previousMessageInputValue, nextValue));
+	previousMessageInputValue = nextValue;
+	renderMessageInputMirror();
+}
+
+/** @param {string} value */
+function setMessageInputValue(value) {
+	messageInput.value = value;
+	syncMessageInputValue();
+	updateMessageInputHeight();
+}
+
+function clearMessageInput() {
+	messageInput.value = "";
+	previousMessageInputValue = "";
+	messageMentionTokens = [];
+	renderMessageInputMirror();
+	updateMessageInputHeight();
+}
+
+function getMessageInputWireValue() {
+	return serialiseMentionTokens(messageInput.value, messageMentionTokens);
+}
+
+messageInput.addEventListener("scroll", () => {
+	messageInputMirror.scrollTop = messageInput.scrollTop;
+	messageInputMirror.scrollLeft = messageInput.scrollLeft;
+});
+renderMessageInputMirror();
+
 messageInput.addEventListener("keydown", function(/**@type {KeyboardEvent}*/ e) {
 	if (!(e instanceof Event) || !e.isTrusted) {
 		return;
@@ -2135,12 +2202,11 @@ messageInput.addEventListener("keydown", function(/**@type {KeyboardEvent}*/ e) 
 			sent = sendPlaceChatMsg(messageInput.value, e);
 		}
 		else {
-			sent = sendLiveChatMsg(messageInput.value, e);
+			sent = sendLiveChatMsg(getMessageInputWireValue(), e);
 		}
 		e.preventDefault()
 		if (sent) {
-			messageInput.value = ""
-			updateMessageInputHeight()
+			clearMessageInput()
 		}
 	}
 });
@@ -2148,18 +2214,37 @@ messageInput.addEventListener("focus", openChatPanel);
 
 /**
  * @param {string} text
+ * @returns {{ start: number; end: number }}
  */
 function chatInsertText(text) {
-	const [ start, end ] = [ messageInput.selectionStart, messageInput.selectionEnd ]
-	messageInput.setRangeText(text, start || 0, end || 0, "end")
+	const [ start, end ] = [ messageInput.selectionStart ?? 0, messageInput.selectionEnd ?? 0 ]
+	messageInput.setRangeText(text, start, end, "end")
+	messageMentionTokens = rebaseMentionTokens(messageMentionTokens, {
+		start,
+		oldEnd: end,
+		newEnd: start + text.length
+	})
+	previousMessageInputValue = messageInput.value
+	renderMessageInputMirror()
+	updateMessageInputHeight()
 	messageInput.focus()
+	return { start, end: start + text.length }
 }
 
 /**
  * @param {number} senderId
  */
 function chatMentionUser(senderId) {
-	chatInsertText(formatMention(senderId) + " ")
+	if (!Number.isSafeInteger(senderId) || senderId <= 0) return;
+	const label = `@${intIdNames.get(senderId) || `#${senderId}`}`;
+	const insertedRange = chatInsertText(label + " ");
+	messageMentionTokens.push({
+		start: insertedRange.start,
+		end: insertedRange.start + label.length,
+		label,
+		intId: senderId
+	});
+	renderMessageInputMirror();
 }
 
 messageTypePanel.children[0].addEventListener("click", function (/**@type {Event}*/e) {
@@ -2168,7 +2253,7 @@ messageTypePanel.children[0].addEventListener("click", function (/**@type {Event
 	}
 
 	if (sendPlaceChatMsg(messageInput.value, e)) {
-		messageInput.value = "";
+		clearMessageInput();
 	}
 });
 messageTypePanel.children[1].addEventListener("click", function(/**@type {Event}*/e) {
@@ -2176,8 +2261,8 @@ messageTypePanel.children[1].addEventListener("click", function(/**@type {Event}
 		return;
 	}
 
-	if (sendLiveChatMsg(messageInput.value, e)) {
-		messageInput.value = "";
+	if (sendLiveChatMsg(getMessageInputWireValue(), e)) {
+		clearMessageInput();
 	}
 });
 
@@ -2616,7 +2701,7 @@ function showMentionSuggestions(mentionQuery) {
 
 		entryElement.addEventListener("click", function() {
 			messageInput.setSelectionRange(mentionQuery.start, mentionQuery.end);
-			chatInsertText(formatMention(userId) + " ");
+			chatMentionUser(userId);
 			closeMessageEmojisPanel();
 			updateMessageInputHeight();
 		});
@@ -2650,6 +2735,7 @@ messageInput.oninput = (/** @type {{ isTrusted: any; }} */ e) => {
 	if (!e.isTrusted) {
 		return;
 	}
+	syncMessageInputValue();
 	updateMessageInputHeight();
 
 	messageEmojisPanel.innerHTML = "";
@@ -2714,7 +2800,7 @@ messageInput.oninput = (/** @type {{ isTrusted: any; }} */ e) => {
 			entryElement.addEventListener("click", function() {
 				for (let i = messageInput.value.length - 1; i >= 0; i--) {
 					if (messageInput.value[i] == ":") {
-						messageInput.value = messageInput.value.slice(0, i) + value;
+						setMessageInputValue(messageInput.value.slice(0, i) + value);
 						closeMessageEmojisPanel();
 						break
 					}
@@ -2725,7 +2811,7 @@ messageInput.oninput = (/** @type {{ isTrusted: any; }} */ e) => {
 		}
 
 		if (messageInput.value.includes(":" + emojiCode + ":")) {
-			messageInput.value = messageInput.value.replace(":" + emojiCode + ":", value);
+			setMessageInputValue(messageInput.value.replace(":" + emojiCode + ":", value));
 			messageInput.setAttribute("state", "default");
 			handled = true;
 		}
@@ -2737,7 +2823,7 @@ messageInput.oninput = (/** @type {{ isTrusted: any; }} */ e) => {
 			entryElement.addEventListener("click", function() {
 				for (let i = messageInput.value.length - 1; i >= 0; i--) {
 					if (messageInput.value[i] == ":") {
-						messageInput.value = messageInput.value.slice(0, i) + ":" + emojiCode + ":";
+						setMessageInputValue(messageInput.value.slice(0, i) + ":" + emojiCode + ":");
 						closeMessageEmojisPanel();
 						break;
 					}
@@ -2761,7 +2847,7 @@ messageInput.oninput = (/** @type {{ isTrusted: any; }} */ e) => {
 			entryLabel.textContent = `:${commandCode}`;
 			entryElement.appendChild(entryLabel);
 			entryElement.addEventListener("click", function() {
-				messageInput.value = ":" + commandCode;
+				setMessageInputValue(":" + commandCode);
 				closeMessageEmojisPanel();
 			})
 			entryElement.appendChild(stringToHtml(value))

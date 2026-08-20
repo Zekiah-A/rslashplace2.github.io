@@ -315,6 +315,15 @@ dialog {
 	padding-top: 8px;
 	height: max(36px, var(--message-input-height));
 }
+#messageInputMirror {
+	padding: 8px 5px 5px;
+	border: 0 solid transparent;
+	border-radius: 10px;
+	font-family: bold;
+}
+:root[data-variant="dark"] #messageInputMirror {
+	border-width: 1px;
+}
 #messageInput[state="command"] {
 	color: #00FA9A;
 }

@@ -1111,6 +1111,7 @@ body[eventphase="3"] .coverer-title {
 
 .message-input-actions {
 	position: absolute;
+	z-index: 3;
 	right: 2px;
 	top: 0;
 	height: 36px;
@@ -1128,8 +1129,34 @@ body[eventphase="3"] .coverer-title {
 }
 
 #messageInput {
+	position: relative;
+	z-index: 1;
 	resize: none;
 	width: 100%;
+}
+
+#messageInputMirror {
+	position: absolute;
+	inset: 0;
+	z-index: 2;
+	width: 100%;
+	height: 100%;
+	box-sizing: border-box;
+	overflow: hidden;
+	color: transparent;
+	font-size: 16px;
+	line-height: normal;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+	pointer-events: none;
+	user-select: none;
+}
+
+#messageInputMirror .linked-mention {
+	background: rgba(255, 87, 0, 0.2);
+	background: color-mix(in srgb, var(--reddit-orange) 20%, transparent);
+	border-radius: 2px;
+	box-shadow: inset 0 -2px var(--reddit-orange);
 }
 
 .chat-bottom-panel {
