@@ -2,7 +2,7 @@ import { $ } from "../../shared.js";
 import { EditList } from "../../shared-elements.js";
 import { setSelectColourSample, getDefaultSample } from "./game-audio.js";
 
-export let enableWebglCanvas = localStorage.enableWebglCanvas === "true";
+export let useLegacyCanvas2D = localStorage.useLegacyCanvas2D === "true";
 export let enableNewOverlayMenu = localStorage.enableNewOverlayMenu === "true";
 export let enableMelodicPalette = localStorage.enableMelodicPalette === "true";
 
@@ -13,11 +13,11 @@ closeButton.addEventListener("click", function() {
 })
 
 // Experimental settings
-const enableWebglCanvasCheckbox = /**@type {HTMLInputElement}*/($("#enableWebglCanvasCheckbox"));
-enableWebglCanvasCheckbox.checked = enableWebglCanvas;
-enableWebglCanvasCheckbox.addEventListener("change", function() {
-	enableWebglCanvas = !enableWebglCanvas;
-	localStorage.enableWebglCanvas = String(enableWebglCanvas);
+const useLegacyCanvas2DCheckbox = /**@type {HTMLInputElement}*/($("#useLegacyCanvas2DCheckbox"));
+useLegacyCanvas2DCheckbox.checked = useLegacyCanvas2D;
+useLegacyCanvas2DCheckbox.addEventListener("change", function() {
+	useLegacyCanvas2D = !useLegacyCanvas2D;
+	localStorage.useLegacyCanvas2D = String(useLegacyCanvas2D);
 });
 
 const enableNewOverlayMenuCheckbox = /**@type {HTMLInputElement}*/($("#enableNewOverlayMenuCheckbox"));
