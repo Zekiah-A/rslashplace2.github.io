@@ -69,7 +69,187 @@ export const TRANSLATIONS = {
 		lockMessage: "This canvas is locked... You can't place pixels here anymore",
 		adHidden: "Ad hidden for 14 days!",
 		copiedToClipboard: "Copied to clipboard!",
-		
+		more: "More",
+		help: "Help",
+		confirmName: "Confirm name",
+		seePreviousMessages: "See previous messages",
+		sendQuicklyCtrlEnter: "Use the shortcut 'ctrl+enter' to send quickly",
+		sendQuicklyEnter: "Use the shortcut 'enter' to send quickly",
+		cancelReply: "Cancel reply",
+		addEmoji: "Add emoji",
+		addGif: "Add gif",
+		enableSounds: "Enable sounds",
+		enableCanvasChat: "Enable canvas chat",
+		cancel: "Cancel",
+		confirmPlacePixel: "Confirm place pixel",
+		openSecretSettings: "Open secret settings",
+		backToGame: "Back to game",
+
+		// Captcha
+		sorryForInterrupting: "🤔 Sorry for interrupting, but",
+		captchaClickEmoji: "Please click the button containing the emoji you see below",
+		generateNewCaptcha: "(generate new captcha)",
+		verifyingSession: "Verifying session...",
+		turnstileAutomatic: "Don't worry, this process should be automatic!",
+		completeCaptcha: "Complete captcha",
+		hcaptchaPrompt: "Please complete the below captcha to continue playing the game!",
+		continue: "Continue",
+
+		// Passkeys
+		passkeyAuthenticate: "Authenticate",
+		passkeyRequired: "Passkey required",
+		passkeyRequiredMessage: "Use a passkey to place pixels and send chat messages.",
+		passkeyInProgress: "Passkey in progress",
+		passkeyBrowserPrompt: "Follow your browser's passkey prompt to continue.",
+		waiting: "Waiting...",
+		passkeysUnavailable: "Passkeys unavailable",
+		passkeysUnsupportedMessage: "This browser or page cannot use passkeys. You can still spectate, but placing and chat are unavailable here.",
+		passkeysSecureSessionMessage: "This browser or page cannot use passkeys. Try a secure browser session on a passkey-capable device.",
+		unavailable: "Unavailable",
+		passkeyFailed: "Passkey failed",
+		passkeyFailedMessage: "Passkey authentication did not complete. You can try again.",
+		passkeyFailedDefault: "Passkey authentication did not complete.",
+		tryAgain: "Try again",
+
+		// Punishments
+		punishmentNotice: "Punishment notice:",
+		mutedNotice: "You have been <strong>muted</strong>, you cannot send messages in live chat.",
+		bannedNotice: "You have been <strong>banned</strong> from placing on the canvas or sending messages in live chat.",
+		muteEnded: "Your mute has ended.",
+		banEnded: "Your ban has ended.",
+		bannedFromPlacing: "You are currently banned from placing pixels.",
+		yourUserId: "Your User ID:",
+		startedOn: "Started on:",
+		endingOn: "Ending on:",
+		reasonLabel: "Reason:",
+		appeal: "Appeal",
+		appealPlaceholder: "Explain why this punishment should be reviewed",
+		submitAppeal: "Submit appeal",
+		appealNotMatched: "This punishment could not be matched to an appealable record.",
+		appealSubmitOnce: "You may submit one appeal. It cannot be edited after submission.",
+		appealNotSubmitted: "This expired punishment was not appealed.",
+		appealPending: "Appeal pending.",
+		appealApproved: "Appeal approved.",
+		appealDenied: "Appeal denied.",
+		loadingAppealStatus: "Loading appeal status...",
+		appealServiceUnavailable: "Appeal service is unavailable on this server.",
+		submittingAppeal: "Submitting appeal...",
+		couldNotSubmitAppeal: "Could not submit appeal.",
+		noResponseRecorded: "No response was recorded.",
+		unknownModerator: "Unknown moderator",
+		unknownPlayer: "Unknown player",
+		unknownTime: "Unknown time",
+		you: "You",
+
+		// Moderation
+		moderationOptions: "Moderation options:",
+		moderationOptionsAction: "Moderation options",
+		manage: "Manage:",
+		messageIdLabel: "Message ID:",
+		enterMessageId: "Enter Message ID",
+		userIdLabel: "User ID:",
+		enterUserId: "Enter User ID",
+		actionLabel: "Action:",
+		deleteMessage: "Delete message",
+		kick: "Kick",
+		mute: "Mute",
+		ban: "Ban",
+		captcha: "Captcha",
+		hours: "Hours",
+		minutes: "Minutes",
+		seconds: "Seconds",
+		applyToAllPlayers: "Apply to all players",
+		moderationWarning: "All moderation actions are logged by the server and reports sent to all other staff. Follow the moderation rules. Do not abuse power.",
+		reason: "Reason",
+		submit: "Submit",
+		loadingMessage: "Loading message...",
+		punishmentReview: "Punishment review",
+		punishmentReviewDescription: "Review mute and ban records and respond to appeals.",
+		mutes: "Mutes",
+		bans: "Bans",
+		loadMore: "Load 50 more",
+		loadingPunishmentRecords: "Loading punishment records...",
+		noPunishmentRecords: "No punishment records found.",
+		couldNotLoadPunishmentRecords: "Could not load punishment records.",
+		couldNotResolveAppeal: "Could not resolve appeal.",
+		moderatorResponse: "Moderator response",
+		explainDecision: "Explain the decision",
+		approve: "Approve",
+		deny: "Deny",
+		responseTooLong: "Enter a response no longer than 1000 bytes.",
+		punishment: "Punishment",
+		user: "User",
+		issuedBy: "Issued by",
+		started: "Started",
+		ends: "Ends",
+		expired: "Expired",
+		active: "Active",
+		unknownDate: "Unknown",
+
+		// Spectate
+		spectateLabel: "Spectate:",
+		spectateUser: "Spectate user:",
+		spectating: "Spectating",
+
+		// Advanced view
+		advancedViewOptions: "Advanced view options:",
+		selectionMode: "Selection mode:",
+		createSelection: "+ Create a selection",
+		renderLayers: "Render layers:",
+		renderLayersDescription: "Control what board layers are being rendered by the game:",
+		canvasLayer: "Canvas layer:",
+		changesLayer: "Changes layer:",
+		pixelsLayer: "Pixels layer:",
+
+		// Overlay
+		overlayLabel: "Overlay:",
+		overlayTooltip: "Make use of a canvas overlay image in order to help yourself better position your pixels",
+		imageX: "Image X:",
+		enterImageX: "Enter Image X",
+		imageY: "Image Y:",
+		enterImageY: "Enter Image Y",
+		imageOpacity: "Image Opacity:",
+		adjustOpacity: "Adjust opacity",
+		copyCanvasLink: "Copy canvas link",
+		copyOverlayUrl: "Copy overlay URL",
+		overlayTooBig: "Failed: Overlay is too big!",
+		selectImage: "Select image:",
+		share: "Share",
+		adjustImage: "Adjust image",
+		colourMatching: "Colour matching:",
+		nearestMatch: "Nearest match",
+		ignoreInvalidColours: "Ignore invalid colours",
+		imageOptions: "Image options:",
+		sharpenImageEdges: "Sharpen image edges",
+		flipImageX: "Flip image X",
+		flipImageY: "Flip image Y",
+
+		// Chat context & reports
+		impersonatingUser: "This user is likely impersonating @",
+		verifiedUser: "This user is verified as @",
+		addedBy: "Added by:",
+		reportHere: "Report here",
+		showPixelPlacerInfo: "Show pixel placer info",
+		moderateHere: "Moderate here",
+		pixelReportsOfficialOnly: "Pixel reports are only available on the official server",
+		reportPixel: "Report pixel",
+		reportPixelAt: "Report the player who placed the pixel at",
+		canvasReportPlaceholder: "Describe what should be reviewed",
+		submitReport: "Submit report",
+		close: "Close",
+		reportSent: "Report sent for moderator review.",
+		reportSendFailed: "Could not send the report. Please reconnect and try again.",
+		reportReasonTooLong: "Enter a report reason no longer than 280 bytes.",
+		outsideCanvas: "This location is outside the canvas.",
+
+		// Placer info
+		placerInfoTitle: "Pixel placer info",
+		lookingUpPlacer: "Looking up placer information...",
+		couldNotFindPlacer: "Could not find details of who placed the pixel at this location.",
+		position: "Position",
+		name: "Name",
+		userId: "User ID",
+
 		// Posts
 		rplaceLivePosts: "rplace.live posts",
 		searchKeyword: "Search keyword",
@@ -200,12 +380,22 @@ export async function translateAll() {
 	if (!translations) {
 		translations = await fetchTranslations(lang);
 	}
-	const elements = document.querySelectorAll("[translate]");
+	const elements = document.querySelectorAll("[translate], [translate-title]");
 	elements.forEach((element) => {
+		const titleKey = element.getAttribute("translate-title");
+		if (titleKey !== null) {
+			const title = translations?.[titleKey] ?? TRANSLATIONS["en"]?.[titleKey] ?? titleKey;
+			if (title) {
+				element.title = title;
+			}
+		}
 		const key = element.getAttribute("translate");
+		if (key === null) {
+			return;
+		}
 		const translation = translations?.[key] ?? TRANSLATIONS["en"]?.[key] ?? key;
 		if (element instanceof HTMLInputElement) {
-			if (element.type === "text") {
+			if (element.type === "text" || element.hasAttribute("placeholder")) {
 				element.placeholder = translation || element.placeholder;
 			}
 			else {

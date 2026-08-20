@@ -385,7 +385,7 @@ export class LiveChatMessage extends LitElement {
 				${until(renderActionButton("/svg/reply-action.svg", "replyTo", this.#notifyReplyClick), html`<span>...</span>`)}
 				${until(renderActionButton("/svg/react-action.svg", "addReaction", this.#notifyReact), html`<span>...</span>`)}
 				${until(renderActionButton("/svg/report-action.svg", "report", this.#notifyReportClick), html`<span>...</span>`)}
-				${localStorage.vip?.startsWith("!") ? until(renderActionButton("svg/moderate-action.svg", "Moderation options", this.#notifyModerateClick), html`<span>Loading...</span>`) : null}
+				${localStorage.vip?.startsWith("!") ? until(renderActionButton("svg/moderate-action.svg", "moderationOptionsAction", this.#notifyModerateClick), html`<span>Loading...</span>`) : null}
 			</div>`
 	}
 
@@ -426,10 +426,10 @@ export class LiveChatMessage extends LitElement {
 								</summary>
 								<div class="reaction-body">
 									<hr>
-									<h3>Added by:</h3>
+									<h3>${until(translate("addedBy"), "Added by:")}</h3>
 									<ul class="reactors">
 										${[...reactors].map((reactor) => html`
-											<li class="reactor" title=${"User ID: #" + reactor.intId}>
+											<li class="reactor" title=${until(translate("userIdLabel").then((/**@type {string}*/label) => `${label} #${reactor.intId}`), "User ID: #" + reactor.intId)}>
 												${reactor.chatName ?? "#" + reactor.intId}
 											</li>
 										`)}
@@ -499,7 +499,8 @@ export class PunishmentRecordElement extends LitElement {
 		record: { attribute:false },
 		busy: { type:Boolean, state:true },
 		response: { type:String, state:true },
-		errorMessage: { type:String, state:true }
+		errorMessage: { type:String, state:true },
+		labels: { attribute:false }
 	};
 
 	constructor() {
@@ -509,11 +510,39 @@ export class PunishmentRecordElement extends LitElement {
 		this.busy = false;
 		this.response = "";
 		this.errorMessage = "";
+		/** @type {Record<string, string>} */
+		this.labels = {
+			unknownModerator: "Unknown moderator",
+			unknownPlayer: "Unknown player",
+			unknownDate: "Unknown",
+			expired: "Expired",
+			active: "Active",
+			punishment: "Punishment",
+			user: "User",
+			issuedBy: "Issued by",
+			started: "Started",
+			ends: "Ends",
+			reason: "Reason",
+			appeal: "Appeal",
+			moderatorResponse: "Moderator response",
+			explainDecision: "Explain the decision",
+			approve: "Approve",
+			deny: "Deny",
+			noResponseRecorded: "No response was recorded.",
+			responseTooLong: "Enter a response no longer than 1000 bytes."
+		};
 	}
 
 	connectedCallback() {
 		super.connectedCallback();
 		this.setAttribute("role", "listitem");
+		void this.#translateLabels();
+	}
+
+	async #translateLabels() {
+		const keys = Object.keys(this.labels);
+		const values = await Promise.all(keys.map(key => translate(key)));
+		this.labels = Object.fromEntries(keys.map((key, index) => [key, values[index]]));
 	}
 
 	createRenderRoot() {
@@ -522,19 +551,19 @@ export class PunishmentRecordElement extends LitElement {
 
 	/** @param {string|null} name @param {number|null} intId */
 	#person(name, intId) {
-		if (typeof intId !== "number" || !Number.isInteger(intId) || intId < 0) return "Unknown moderator";
+		if (typeof intId !== "number" || !Number.isInteger(intId) || intId < 0) return this.labels.unknownModerator;
 		return `${name || "anon"} (#${intId})`;
 	}
 
 	/** @param {number|null} value */
 	#date(value) {
 		return typeof value === "number" && Number.isFinite(value)
-			? new Date(value).toLocaleString() : "Unknown";
+			? new Date(value).toLocaleString() : this.labels.unknownDate;
 	}
 
 	#status() {
-		if (!this.record || this.record.finishDate <= Date.now()) return "Expired";
-		return "Active";
+		if (!this.record || this.record.finishDate <= Date.now()) return this.labels.expired;
+		return this.labels.active;
 	}
 
 	/**
@@ -564,7 +593,7 @@ export class PunishmentRecordElement extends LitElement {
 		const response = this.response.trim();
 		const byteLength = new TextEncoder().encode(response).byteLength;
 		if (byteLength === 0 || byteLength > 1000) {
-			this.errorMessage = "Enter a response no longer than 1000 bytes.";
+			this.errorMessage = this.labels.responseTooLong;
 			return;
 		}
 		this.errorMessage = "";
@@ -588,31 +617,31 @@ export class PunishmentRecordElement extends LitElement {
 				<div class="chat-message-list appeal-conversation">
 					${this.#renderAppealMessage("left", this.record.appealMessage,
 						this.record.appealSubmittedAt, this.record.userIntId,
-						this.record.userChatName, "Unknown player")}
+						this.record.userChatName, this.labels.unknownPlayer)}
 					${pending ? null : this.#renderAppealMessage("right",
-						this.record.appealResponse || "No response was recorded.",
+						this.record.appealResponse || this.labels.noResponseRecorded,
 						this.record.appealRespondedAt, this.record.appealResponderIntId,
-						this.record.appealResponderChatName, "Unknown moderator")}
+						this.record.appealResponderChatName, this.labels.unknownModerator)}
 				</div>
 				${pending ? html`
 					<label class="appeal-response-field">
-						<span>Moderator response</span>
+						<span>${this.labels.moderatorResponse}</span>
 						<textarea .value=${this.response} ?disabled=${this.busy}
 							@input=${(/** @type {InputEvent} */e) => {
 								if (e.currentTarget instanceof HTMLTextAreaElement) this.response = e.currentTarget.value;
 								this.errorMessage = "";
 							}}
-							placeholder="Explain the decision" maxlength="1000"></textarea>
+							placeholder=${this.labels.explainDecision} maxlength="1000"></textarea>
 					</label>
 					${this.errorMessage ? html`<p class="appeal-error" role="alert">${this.errorMessage}</p>` : null}
 					<div class="appeal-decision-actions">
 						<button type="button" class="appeal-approve" ?disabled=${this.busy}
-							@click=${() => this.#submit("approved")}>Approve</button>
+							@click=${() => this.#submit("approved")}>${this.labels.approve}</button>
 						<button type="button" class="appeal-deny" ?disabled=${this.busy}
-							@click=${() => this.#submit("denied")}>Deny</button>
+							@click=${() => this.#submit("denied")}>${this.labels.deny}</button>
 					</div>` : html`
 					<p class="appeal-decision appeal-decision-${this.record.appealStatus}">
-						Appeal ${this.record.appealStatus}
+						${this.labels.appeal} ${this.record.appealStatus}
 					</p>`}
 			</section>`;
 	}
@@ -623,16 +652,16 @@ export class PunishmentRecordElement extends LitElement {
 			<div class="punishment-record-summary">
 				<div>
 					<span class="punishment-record-label">${this.record.type}</span>
-					<strong>Punishment #${this.record.punishmentId}</strong>
+					<strong>${this.labels.punishment} #${this.record.punishmentId}</strong>
 					<span class="punishment-record-state ${this.#status().toLowerCase()}">${this.#status()}</span>
 				</div>
 				<dl>
-					<div><dt>User</dt><dd>${this.#person(this.record.userChatName, this.record.userIntId)}</dd></div>
-					<div><dt>Issued by</dt><dd>${this.#person(this.record.moderatorChatName, this.record.moderatorIntId)}</dd></div>
-					<div><dt>Started</dt><dd>${this.#date(this.record.startDate)}</dd></div>
-					<div><dt>Ends</dt><dd>${this.#date(this.record.finishDate)}</dd></div>
+					<div><dt>${this.labels.user}</dt><dd>${this.#person(this.record.userChatName, this.record.userIntId)}</dd></div>
+					<div><dt>${this.labels.issuedBy}</dt><dd>${this.#person(this.record.moderatorChatName, this.record.moderatorIntId)}</dd></div>
+					<div><dt>${this.labels.started}</dt><dd>${this.#date(this.record.startDate)}</dd></div>
+					<div><dt>${this.labels.ends}</dt><dd>${this.#date(this.record.finishDate)}</dd></div>
 				</dl>
-				<div class="punishment-record-reason"><strong>Reason</strong><p>${this.record.reason}</p></div>
+				<div class="punishment-record-reason"><strong>${this.labels.reason}</strong><p>${this.record.reason}</p></div>
 			</div>`;
 	}
 
