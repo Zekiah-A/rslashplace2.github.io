@@ -1,7 +1,14 @@
+/** @param {string} value */
 function escapeRegExp(value) {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * @param {string} content
+ * @param {string|null|undefined} chatName
+ * @param {number|null|undefined} intId
+ * @returns {boolean}
+ */
 export function isMention(content, chatName, intId) {
 	if (!content || typeof content !== "string") return false;
 	if (!content.includes("@")) return false;
@@ -20,6 +27,7 @@ export function isMention(content, chatName, intId) {
 	return false;
 }
 
+/** @param {string[]|number[]} list @returns {number[]} */
 export function normaliseBlockedUsers(list) {
 	if (!Array.isArray(list)) return [];
 	const out = [];
@@ -34,11 +42,13 @@ export function normaliseBlockedUsers(list) {
 	return out;
 }
 
+/** @param {number} senderIntId @param {number[]} blockedList @returns {boolean} */
 export function isBlocked(senderIntId, blockedList) {
 	if (!Array.isArray(blockedList) || blockedList.length === 0) return false;
 	return blockedList.includes(Number(senderIntId));
 }
 
+/** @param {string} channel @returns {boolean} */
 export function isLanguageChannel(channel) {
 	return typeof channel === "string" && !channel.startsWith("group:");
 }

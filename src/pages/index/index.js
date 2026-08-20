@@ -461,9 +461,10 @@ window.addEventListener("livechatmessage", (/**@type {Event}*/e) => {
 		message.reactions
 	);
 
-	// Apply interactivity to message element
 	applyLiveChatMessageInteractivity(newMessage, channel);
-
+	if (isMention(message.content, chatName, intId) && message.senderIntId !== intId && !isBlocked(message.senderIntId, blockedUsers)) {
+		incrementChannelMention(channel);
+	}
 	const atScrollBottom = chatMessages.scrollTop + chatMessages.offsetHeight + 64 >= chatMessages.scrollHeight;
 
 	// Update message storage
@@ -1566,6 +1567,71 @@ let extraLanguage = (lang == "en" ? "tr" : lang);
 	[extraLanguage, []],
 	["en", []]
 ]);
+const channelMentionCounts = new Map();
+function getChannelMentionCount(channel) {
+	return channelMentionCounts.get(channel) || 0;
+}
+function ensureChannelBadge(container, badgeId) {
+	let badge = container.querySelector(`#${badgeId}`);
+	if (!badge) {
+		badge = document.createElement("span");
+		badge.id = badgeId;
+		badge.className = "channel-mention-badge";
+		badge.hidden = true;
+		container.style.position = "relative";
+		container.appendChild(badge);
+	}
+	return badge;
+}
+function ensureDropdownBadge(li) {
+	let badge = li.querySelector(".channel-mention-badge");
+	if (!badge) {
+		badge = document.createElement("span");
+		badge.className = "channel-mention-badge inline";
+		badge.hidden = true;
+		li.appendChild(badge);
+	}
+	return badge;
+}
+function updateChannelBadges() {
+	const mineCount = getChannelMentionCount(extraLanguage);
+	const enCount = getChannelMentionCount("en");
+	const mineBadge = ensureChannelBadge(channelMineButton, "channelMineBadge");
+	mineBadge.textContent = mineCount > 99 ? "99+" : String(mineCount);
+	mineBadge.hidden = mineCount === 0;
+
+	const enBadge = ensureChannelBadge(channelEnButton, "channelEnBadge");
+	enBadge.textContent = enCount > 99 ? "99+" : String(enCount);
+	enBadge.hidden = enCount === 0;
+
+	const totalOthers = Array.from(channelMentionCounts.entries())
+		.filter(([ch]) => ch !== currentChannel)
+		.reduce((sum, [, n]) => sum + n, 0);
+	const dropParentBadge = ensureChannelBadge(channelDropParent, "channelDropBadge");
+	dropParentBadge.textContent = totalOthers > 99 ? "99+" : String(totalOthers);
+	dropParentBadge.hidden = totalOthers === 0;
+
+	for (const li of channelDropMenu.children) {
+		if (!(li instanceof HTMLElement)) continue;
+		const code = li.dataset.lang;
+		if (!code) continue;
+		const count = getChannelMentionCount(code);
+		const badge = ensureDropdownBadge(li);
+		badge.textContent = count > 99 ? "99+" : String(count);
+		badge.hidden = count === 0;
+	}
+}
+function incrementChannelMention(channel) {
+	if (!channel || channel === currentChannel) return;
+	channelMentionCounts.set(channel, (channelMentionCounts.get(channel) || 0) + 1);
+	updateChannelBadges();
+}
+function clearChannelMentions(channel) {
+	if (channelMentionCounts.has(channel)) {
+		channelMentionCounts.delete(channel);
+		updateChannelBadges();
+	}
+}
 let chatPreviousLoadDebounce = false;
 let chatPreviousAutoLoad = false;
 let currentChannel = lang;
@@ -1656,6 +1722,7 @@ function switchLanguageChannel(selected) {
 		chatCancelReplies()
 	}
 	currentChannel = selected
+	clearChannelMentions(selected);
 	chatMessages.style.direction = (LANG_INFOS.get(selected)?.rtl) ? "rtl" : "ltr"
 
 	if (selected == "en") {
@@ -1816,12 +1883,9 @@ function applyLiveChatMessageInteractivity(message, channel = "") {
 		message.style.textShadow = "0px 0px 6px black";
 	}
 
-	// Handle mentions — pure helper, boundary-aware (chat-helpers.js)
-	// Edge: server censors @everyone/@here for non-admin/vip; censored payload
-	// will not match, so no notification — intentional current behaviour, documented.
 	if (isMention(message.content, chatName, intId)) {
 		message.setAttribute("mention", "true");
-		if (channel === currentChannel) {
+		if (message.senderIntId !== intId && !isBlocked(message.senderIntId, blockedUsers)) {
 			runAudio(AUDIOS.closePalette);
 		}
 	}

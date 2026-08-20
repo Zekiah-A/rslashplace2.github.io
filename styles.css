@@ -1320,6 +1320,34 @@ body[eventphase="3"] .coverer-title {
 	padding: 0;	
 }
 
+.channel-mention-badge {
+	position: absolute;
+	top: -6px;
+	right: -6px;
+	min-width: 16px;
+	height: 16px;
+	padding: 0 4px;
+	border-radius: 999px;
+	background: var(--reddit-orange);
+	color: white;
+	font-size: 10px;
+	line-height: 16px;
+	text-align: center;
+	pointer-events: none;
+	z-index: 1;
+}
+
+.channel-mention-badge.inline {
+	position: static;
+	margin-left: auto;
+	top: auto;
+	right: auto;
+}
+
+#channelDropMenu > li {
+	position: relative;
+}
+
 #captchaPopup {
 	width: 450px;
 	height: fit-content;
