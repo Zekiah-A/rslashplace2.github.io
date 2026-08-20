@@ -14,6 +14,7 @@ import { theme } from "./game-themes.js";
 import { BOARD, canvasLocked, CHANGES, chatName, connectStatus, COOLDOWN, cooldownEndDate, HEIGHT, intId, intIdNames, intIdPositions, onCooldown, PALETTE, PALETTE_USABLE_REGION, passkeyAuthState, placementMode, RAW_BOARD, setCooldown, setPasskeyAuthState, setPlacementMode, SOCKET_PIXELS, supportsCanvasPixelReports, WIDTH, placePixel, sendDefaultCaptchaResult, sendServerMessage, setDefaultCaptchaHandlers, makeServerRequest, connect } from "./game-state.js";
 import { generateIndicators, generatePalette, hideIndicators, showPalette } from "./palette.js";
 import { authenticatePasskey, getPasskeyStatus, registerPasskey, supportsPasskeys } from "./passkeys.js";
+import { isMention, normaliseBlockedUsers, isBlocked } from "./chat-helpers.js";
 import "./popup.js";
 
 import FingerprintJS from "@fingerprintjs/fingerprintjs";
@@ -1809,16 +1810,16 @@ function applyLiveChatMessageInteractivity(message, channel = "") {
 		chatModerate("delete", senderId, messageId, messageElement);
 	});
 
-	// Apply user blocking
-	if (message.senderIntId !== 0 && blockedUsers.includes(message.senderIntId)) {
+	// Apply user blocking — use normalised numeric list (see chat-helpers.js)
+	if (message.senderIntId !== 0 && isBlocked(message.senderIntId, blockedUsers)) {
 		message.style.color = "transparent";
 		message.style.textShadow = "0px 0px 6px black";
 	}
 
-	// Handle mentions
-	if (message.content.includes("@" + chatName) ||
-		message.content.includes("@#" + intId) ||
-		message.content.includes("@everyone")) {
+	// Handle mentions — pure helper, boundary-aware (chat-helpers.js)
+	// Edge: server censors @everyone/@here for non-admin/vip; censored payload
+	// will not match, so no notification — intentional current behaviour, documented.
+	if (isMention(message.content, chatName, intId)) {
 		message.setAttribute("mention", "true");
 		if (channel === currentChannel) {
 			runAudio(AUDIOS.closePalette);
@@ -2887,8 +2888,8 @@ overlayMenuOldCloseButton.addEventListener("click", function() {
 	overlayMenuOld.removeAttribute("open");
 });
 
-// Chat management
-let blockedUsers = localStorage.blocked?.split(",") || [];
+// Chat management — normalise to numbers to avoid string/number mismatch (old code stored ",")
+let blockedUsers = normaliseBlockedUsers(localStorage.blocked?.split(",") || []);
 /**@type {number|null}*/let targetedIntId = null;
 /**@type {number|null}*/let targetedMsgId = null;
 /**@type {number|null}*/let currentReplyId = null;
@@ -3020,7 +3021,7 @@ async function onChatContext(e, senderId, msgId) {
 		mentionUserButton.textContent = `${await translate("mention")} ${identifier}`;
 		replyUserButton.textContent = `${await translate("replyTo")} ${identifier}`;
 		blockUserButton.textContent =
-			`${await translate(blockedUsers.includes(senderId) ? "unblock" : "block")} ${identifier}`;
+			`${await translate(isBlocked(senderId, blockedUsers) ? "unblock" : "block")} ${identifier}`;
 
 		if (senderId == intId) {
 			blockUserButton.disabled = true;
@@ -3052,13 +3053,15 @@ replyUserButton.addEventListener("click", function(e) {
 	chatContext.style.display = "none";
 })
 blockUserButton.addEventListener("click", function(e) {
-	if (blockedUsers.includes(targetedIntId)) {
-		blockedUsers.splice(blockedUsers.indexOf(targetedIntId), 1);
+	if (targetedIntId == null) return;
+	const tid = Number(targetedIntId);
+	if (isBlocked(tid, blockedUsers)) {
+		blockedUsers.splice(blockedUsers.indexOf(tid), 1);
 	}
-	else if (targetedIntId != intId) {
-		blockedUsers.push(targetedIntId);
+	else if (tid !== intId) {
+		blockedUsers.push(tid);
 	}
-	localStorage.blocked = blockedUsers;
+	localStorage.blocked = blockedUsers.join(",");
 	chatContext.style.display = "none";
 });
 changeMyNameButton.addEventListener("click", function(e) {
