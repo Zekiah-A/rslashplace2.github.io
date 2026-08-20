@@ -1568,9 +1568,11 @@ let extraLanguage = (lang == "en" ? "tr" : lang);
 	["en", []]
 ]);
 const channelMentionCounts = new Map();
+/** @param {string} channel @returns {number} */
 function getChannelMentionCount(channel) {
 	return channelMentionCounts.get(channel) || 0;
 }
+/** @param {HTMLElement} container @param {string} badgeId @returns {HTMLElement} */
 function ensureChannelBadge(container, badgeId) {
 	let badge = container.querySelector(`#${badgeId}`);
 	if (!badge) {
@@ -1583,6 +1585,7 @@ function ensureChannelBadge(container, badgeId) {
 	}
 	return badge;
 }
+/** @param {HTMLElement} li @returns {HTMLElement} */
 function ensureDropdownBadge(li) {
 	let badge = li.querySelector(".channel-mention-badge");
 	if (!badge) {
@@ -1621,11 +1624,13 @@ function updateChannelBadges() {
 		badge.hidden = count === 0;
 	}
 }
+/** @param {string} channel */
 function incrementChannelMention(channel) {
 	if (!channel || channel === currentChannel) return;
 	channelMentionCounts.set(channel, (channelMentionCounts.get(channel) || 0) + 1);
 	updateChannelBadges();
 }
+/** @param {string} channel */
 function clearChannelMentions(channel) {
 	if (channelMentionCounts.has(channel)) {
 		channelMentionCounts.delete(channel);
