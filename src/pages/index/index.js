@@ -1,5 +1,5 @@
 import { DEFAULT_BOARD, DEFAULT_SERVER, ADS,  COMMANDS, CUSTOM_EMOJIS, DEFAULT_HEIGHT, DEFAULT_PALETTE_KEYS, DEFAULT_THEMES, DEFAULT_WIDTH, EMOJIS, LANG_INFOS, MAX_CHANNEL_MESSAGES, PUNISHMENT_STATE, PLACEMENT_MODE, RENDERER_TYPE } from "../../defaults.js";
-import { lang, translate, translateAll, $, stringToHtml, blobToBase64, base64ToBlob }  from "../../shared.js";
+import { lang, translate, translateAll, $, stringToHtml, blobToBase64, base64ToBlob, toCapitalised }  from "../../shared.js";
 import { showLoadingScreen, hideLoadingScreen } from "./loading-screen.js";
 import { clearCaptchaCanvas, updateImgCaptchaCanvas, updateImgCaptchaCanvasFallback } from "./captcha-canvas.js";
 import { boardRenderer, canvasCtx, zoomIn, moveTo, setPlaceChatPosition, setMinZoom, pos, x, y, z, minZoom, setX, setY, setZ, setViewportRenderer } from "./viewport.js";
@@ -221,7 +221,7 @@ function getHttpServerUrl() {
 		.replace("wss://", "https://").replace("ws://", "http://");
 }
 
-function updatePasskeyMenu(message = "") {
+async function updatePasskeyMenu(message = "") {
 	if (passkeyAuthState === "completed" || passkeyAuthState === "not-required") {
 		passkeyMenu.removeAttribute("open");
 		passkeyAuthBusy = false;
@@ -233,24 +233,24 @@ function updatePasskeyMenu(message = "") {
 	passkeyMenuButton.disabled = passkeyAuthBusy || passkeyAuthState === "unsupported";
 
 	if (passkeyAuthBusy) {
-		passkeyMenuTitle.textContent = "Passkey in progress";
-		passkeyMenuMessage.textContent = "Follow your browser's passkey prompt to continue.";
-		passkeyMenuButton.textContent = "Waiting...";
+		passkeyMenuTitle.textContent = await translate("passkeyInProgress");
+		passkeyMenuMessage.textContent = await translate("passkeyBrowserPrompt");
+		passkeyMenuButton.textContent = await translate("waiting");
 	}
 	else if (passkeyAuthState === "unsupported") {
-		passkeyMenuTitle.textContent = "Passkeys unavailable";
-		passkeyMenuMessage.textContent = message || "This browser or page cannot use passkeys. You can still spectate, but placing and chat are unavailable here.";
-		passkeyMenuButton.textContent = "Unavailable";
+		passkeyMenuTitle.textContent = await translate("passkeysUnavailable");
+		passkeyMenuMessage.textContent = message || await translate("passkeysUnsupportedMessage");
+		passkeyMenuButton.textContent = await translate("unavailable");
 	}
 	else if (passkeyAuthState === "failed") {
-		passkeyMenuTitle.textContent = "Passkey failed";
-		passkeyMenuMessage.textContent = message || "Passkey authentication did not complete. You can try again.";
-		passkeyMenuButton.textContent = "Try again";
+		passkeyMenuTitle.textContent = await translate("passkeyFailed");
+		passkeyMenuMessage.textContent = message || await translate("passkeyFailedMessage");
+		passkeyMenuButton.textContent = await translate("tryAgain");
 	}
 	else {
-		passkeyMenuTitle.textContent = "Passkey required";
-		passkeyMenuMessage.textContent = message || "Use a passkey to place pixels and send chat messages.";
-		passkeyMenuButton.textContent = "Continue";
+		passkeyMenuTitle.textContent = await translate("passkeyRequired");
+		passkeyMenuMessage.textContent = message || await translate("passkeyRequiredMessage");
+		passkeyMenuButton.textContent = await translate("continue");
 	}
 }
 
@@ -279,7 +279,7 @@ async function startPasskeyAuth() {
 	}
 
 	if (!supportsPasskeys()) {
-		setPasskeyAuthState("unsupported", "This browser or page cannot use passkeys. Try a secure browser session on a passkey-capable device.");
+		setPasskeyAuthState("unsupported", await translate("passkeysSecureSessionMessage"));
 		return;
 	}
 
@@ -303,7 +303,7 @@ async function startPasskeyAuth() {
 		await refreshPasskeyStatus();
 	}
 	catch (error) {
-		const message = error instanceof Error ? error.message : "Passkey authentication did not complete.";
+		const message = error instanceof Error ? error.message : await translate("passkeyFailedDefault");
 		setPasskeyAuthState("failed", message);
 	}
 	finally {
@@ -680,12 +680,12 @@ const activePunishmentTypes = new Set();
  * @param {string} message
  * @param {number|null} date
  */
-function appendAppealMessage(container, displaySide, senderIntId, senderChatName, message, date) {
+async function appendAppealMessage(container, displaySide, senderIntId, senderChatName, message, date) {
 	const appealMessage = /** @type {import("./game-elements.js").LiveChatMessage} */(
 		document.createElement("r-live-chat-message"));
 	appealMessage.dataset.displaySide = displaySide;
 	appealMessage.dataset.explicitTime = typeof date === "number" && Number.isFinite(date)
-		? new Date(date).toLocaleString() : "Unknown time";
+		? new Date(date).toLocaleString() : await translate("unknownTime");
 	appealMessage.messageId = -1;
 	appealMessage.senderIntId = senderIntId;
 	appealMessage.senderChatName = senderChatName;
@@ -695,7 +695,7 @@ function appendAppealMessage(container, displaySide, senderIntId, senderChatName
 }
 
 /** @param {import("./moderation-api.js").PunishmentRecord|null} record */
-function renderPlayerAppeal(record) {
+async function renderPlayerAppeal(record) {
 	currentPunishmentRecord = record;
 	punishmentAppealConversation.replaceChildren();
 	punishmentAppealConversation.hidden = true;
@@ -706,36 +706,36 @@ function renderPlayerAppeal(record) {
 	punishmentAppealLimit.textContent = "0 / 1000 bytes";
 
 	if (!record) {
-		punishmentAppeal.textContent = "This punishment could not be matched to an appealable record.";
+		punishmentAppeal.textContent = await translate("appealNotMatched");
 		return;
 	}
 	if (!record.appealMessage && record.finishDate > Date.now()) {
-		punishmentAppeal.textContent = "You may submit one appeal. It cannot be edited after submission.";
+		punishmentAppeal.textContent = await translate("appealSubmitOnce");
 		punishmentAppealForm.hidden = false;
 		return;
 	}
 	if (!record.appealMessage) {
-		punishmentAppeal.textContent = "This expired punishment was not appealed.";
+		punishmentAppeal.textContent = await translate("appealNotSubmitted");
 		return;
 	}
 
-	punishmentAppeal.textContent = `Appeal ${record.appealStatus}.`;
+	punishmentAppeal.textContent = await translate(`appeal${toCapitalised(record.appealStatus)}`);
 	punishmentAppealConversation.hidden = false;
-	appendAppealMessage(punishmentAppealConversation, "left", intId, chatName || "You",
+	await appendAppealMessage(punishmentAppealConversation, "left", intId, chatName || await translate("you"),
 		record.appealMessage, record.appealSubmittedAt);
 	if (record.appealStatus !== "pending") {
 		const knownModerator = typeof record.appealResponderIntId === "number" &&
 			Number.isInteger(record.appealResponderIntId) && record.appealResponderIntId >= 0;
 		const moderatorIntId = knownModerator ? record.appealResponderIntId : -1;
-		const moderatorName = knownModerator ? record.appealResponderChatName : "Unknown moderator";
-		appendAppealMessage(punishmentAppealConversation, "right", moderatorIntId, moderatorName,
-			record.appealResponse || "No response was recorded.", record.appealRespondedAt);
+		const moderatorName = knownModerator ? record.appealResponderChatName : await translate("unknownModerator");
+		await appendAppealMessage(punishmentAppealConversation, "right", moderatorIntId, moderatorName,
+			record.appealResponse || await translate("noResponseRecorded"), record.appealRespondedAt);
 	}
 }
 
 /** @param {{state:number, startDate:number, endDate:number}} info */
 async function loadPlayerAppeal(info) {
-	punishmentAppeal.textContent = "Loading appeal status...";
+	punishmentAppeal.textContent = await translate("loadingAppealStatus");
 	punishmentAppealForm.hidden = true;
 	try {
 		const data = await getOwnPunishments();
@@ -745,16 +745,16 @@ async function loadPlayerAppeal(info) {
 			Math.floor(record.startDate / 1000) * 1000 === info.startDate &&
 			Math.floor(record.finishDate / 1000) * 1000 === info.endDate);
 		const fallback = records.find(record => record.type === type && record.finishDate > Date.now());
-		renderPlayerAppeal(exact || fallback || null);
+		await renderPlayerAppeal(exact || fallback || null);
 	}
 	catch (error) {
 		currentPunishmentRecord = null;
-		punishmentAppeal.textContent = "Appeal service is unavailable on this server.";
+		punishmentAppeal.textContent = await translate("appealServiceUnavailable");
 		console.error("Couldn't load punishment appeal:", error);
 	}
 }
 
-window.addEventListener("punishment", (/**@type {Event}*/e) => {
+window.addEventListener("punishment", async (/**@type {Event}*/e) => {
 	if (!(e instanceof CustomEvent)) {
 		throw new Error("Window event was not of type CustomEvent");
 	}
@@ -765,20 +765,20 @@ window.addEventListener("punishment", (/**@type {Event}*/e) => {
 	else activePunishmentTypes.delete(type);
 
 	if (type === "mute") {
-		punishmentNote.innerHTML = "You have been <strong>muted</strong>, you cannot send messages in live chat.";
+		punishmentNote.innerHTML = await translate("mutedNotice");
 	}
 	else {
-		punishmentNote.innerHTML = "You have been <strong>banned</strong> from placing on the canvas or sending messages in live chat.";
+		punishmentNote.innerHTML = await translate("bannedNotice");
 	}
-	if (!active) punishmentNote.textContent = `Your ${type} has ended.`;
+	if (!active) punishmentNote.textContent = await translate(`${type}Ended`);
 	messageInput.disabled = activePunishmentTypes.size > 0;
-	if (activePunishmentTypes.has("ban")) setCanvasLocked(true, "You are currently banned from placing pixels.");
+	if (activePunishmentTypes.has("ban")) setCanvasLocked(true, await translate("bannedFromPlacing"));
 	else if (!canvasLocked && spectateStartState === null) setCanvasLocked(false);
 
-	punishmentUserId.textContent = `Your User ID: #${intId}`;
-	punishmentStartDate.textContent = `Started on: ${new Date(info.startDate).toLocaleString()}`;
-	punishmentEndDate.textContent = `Ending on: ${new Date(info.endDate).toLocaleString()}`;
-	punishmentReason.textContent = `Reason: ${info.reason}`;
+	punishmentUserId.textContent = `${await translate("yourUserId")} #${intId}`;
+	punishmentStartDate.textContent = `${await translate("startedOn")} ${new Date(info.startDate).toLocaleString()}`;
+	punishmentEndDate.textContent = `${await translate("endingOn")} ${new Date(info.endDate).toLocaleString()}`;
+	punishmentReason.textContent = `${await translate("reasonLabel")} ${info.reason}`;
 	void loadPlayerAppeal(info);
 	punishmentMenu.setAttribute("open", "true");
 });
@@ -796,16 +796,16 @@ punishmentAppealForm.addEventListener("submit", async event => {
 	if (byteLength === 0 || byteLength > 1000) return;
 	punishmentAppealMessage.disabled = true;
 	punishmentAppealSubmitButton.disabled = true;
-	punishmentAppeal.textContent = "Submitting appeal...";
+	punishmentAppeal.textContent = await translate("submittingAppeal");
 	try {
 		const result = await submitPunishmentAppeal(
 			currentPunishmentRecord.type, currentPunishmentRecord.punishmentId, message);
-		renderPlayerAppeal(result.appeal);
+		await renderPlayerAppeal(result.appeal);
 	}
 	catch (error) {
 		punishmentAppealMessage.disabled = false;
 		punishmentAppealSubmitButton.disabled = false;
-		punishmentAppeal.textContent = error instanceof Error ? error.message : "Could not submit appeal.";
+		punishmentAppeal.textContent = error instanceof Error ? error.message : await translate("couldNotSubmitAppeal");
 	}
 });
 window.addEventListener("spectating", (/**@type {Event}*/e) => {
@@ -882,9 +882,9 @@ placeContext.addEventListener("mousedown", function(e) {
 const placeContextReportButton = /**@type {HTMLButtonElement}*/($("#placeContextReportButton"));
 placeContextReportButton.disabled = !supportsCanvasPixelReports;
 if (!supportsCanvasPixelReports) {
-	placeContextReportButton.title = "Pixel reports are only available on the official server";
+	void translate("pixelReportsOfficialOnly").then(title => placeContextReportButton.title = title);
 }
-placeContextReportButton.addEventListener("click", function() {
+placeContextReportButton.addEventListener("click", async function() {
 	if (!supportsCanvasPixelReports) {
 		return;
 	}
@@ -897,10 +897,10 @@ placeContextReportButton.addEventListener("click", function() {
 	canvasReportPosition.textContent = `${pixelX}, ${pixelY}`;
 	canvasReportForm.reset();
 	canvasReportReason.disabled = !inBounds;
-	canvasReportStatus.textContent = inBounds ? "" : "This location is outside the canvas.";
+	canvasReportStatus.textContent = inBounds ? "" : await translate("outsideCanvas");
 	canvasReportStatus.hidden = inBounds;
 	canvasReportSubmitButton.disabled = true;
-	canvasReportCancelButton.textContent = "Cancel";
+	canvasReportCancelButton.textContent = await translate("cancel");
 	canvasReportLimit.textContent = "0 / 280 bytes";
 	if (!canvasReportDialog.open) {
 		canvasReportDialog.showModal();
@@ -931,7 +931,7 @@ async function showPlacerInfo(x, y) {
 	const pixelY = Math.floor(y);
 	const id = intIdPositions.get(pixelX + pixelY * WIDTH);
 
-	placerInfoStatus.textContent = "Looking up placer information...";
+	placerInfoStatus.textContent = await translate("lookingUpPlacer");
 	placerInfoStatus.hidden = false;
 	placerInfoDetails.hidden = true;
 	if (!placerInfoDialog.open) {
@@ -939,7 +939,7 @@ async function showPlacerInfo(x, y) {
 	}
 
 	if (id === undefined) {
-		placerInfoStatus.textContent = "Could not find details of who placed the pixel at this location.";
+		placerInfoStatus.textContent = await translate("couldNotFindPlacer");
 		return;
 	}
 	let name = intIdNames.get(id);
@@ -960,7 +960,7 @@ async function showPlacerInfo(x, y) {
 		}
 		catch(e) {
 			if (requestId === placerInfoRequestId) {
-				placerInfoStatus.textContent = "Could not find details of who placed the pixel at this location.";
+				placerInfoStatus.textContent = await translate("couldNotFindPlacer");
 			}
 			console.error("Couldn't show placer info:", e);
 			return;
@@ -986,12 +986,12 @@ canvasReportReason.addEventListener("input", function() {
 	canvasReportSubmitButton.disabled = byteLength === 0 || byteLength > 280;
 	canvasReportStatus.hidden = true;
 });
-canvasReportForm.addEventListener("submit", function(e) {
+canvasReportForm.addEventListener("submit", async function(e) {
 	e.preventDefault();
 	const reason = canvasReportReason.value.trim();
 	const byteLength = reportTextEncoder.encode(reason).byteLength;
 	if (selectedCanvasReportPosition === null || byteLength === 0 || byteLength > 280) {
-		canvasReportStatus.textContent = "Enter a report reason no longer than 280 bytes.";
+		canvasReportStatus.textContent = await translate("reportReasonTooLong");
 		canvasReportStatus.hidden = false;
 		return;
 	}
@@ -1002,12 +1002,12 @@ canvasReportForm.addEventListener("submit", function(e) {
 		}, e);
 		canvasReportReason.disabled = true;
 		canvasReportSubmitButton.disabled = true;
-		canvasReportCancelButton.textContent = "Close";
-		canvasReportStatus.textContent = "Report sent for moderator review.";
+		canvasReportCancelButton.textContent = await translate("close");
+		canvasReportStatus.textContent = await translate("reportSent");
 		canvasReportStatus.hidden = false;
 	}
 	catch(error) {
-		canvasReportStatus.textContent = "Could not send the report. Please reconnect and try again.";
+		canvasReportStatus.textContent = await translate("reportSendFailed");
 		canvasReportStatus.hidden = false;
 		console.error("Couldn't report canvas pixel:", error);
 	}
@@ -1429,7 +1429,7 @@ async function updatePlaceButton() {
 		const leftS = Math.floor(left / 1000);
 
 		if (!passkeyReadyForActions()) {
-			innerHTML = "Authenticate";
+			innerHTML = await translate("passkeyAuthenticate");
 			clearCooldownInterval();
 		}
 		else if (left > 0) {
@@ -2278,7 +2278,7 @@ modOptionsButton.addEventListener("click", async function() {
 });
 modMessageId.addEventListener("input", async function(e) {
 	// Show loading state immediately
-	modMessagePreview.textContent = "Loading message...";
+	modMessagePreview.textContent = await translate("loadingMessage");
 
 	// Check local cache first
 	let found = null;
@@ -2317,11 +2317,11 @@ modMessageId.addEventListener("input", async function(e) {
 				modMessagePreview.appendChild(messageElement);
 			}
 			else {
-				modMessagePreview.textContent = "Message not found";
+				modMessagePreview.textContent = await translate("messageNotFound");
 			}
 		}
 		catch (error) {
-			modMessagePreview.textContent = "Message not found";
+			modMessagePreview.textContent = await translate("messageNotFound");
 		}
 	}
 });
@@ -2382,6 +2382,10 @@ function closeChatModerate() {
 }
 modCloseButton.addEventListener("click", closeChatModerate);
 modCancelButton.addEventListener("click", closeChatModerate);
+const modReviewButton = /**@type {HTMLButtonElement}*/($("#modReviewButton"));
+modReviewButton.addEventListener("click", function() {
+	openModerationReview();
+});
 
 modActionForm.addEventListener("change", (e) => {
 	if (!(e.target instanceof HTMLInputElement)) {
@@ -2429,7 +2433,7 @@ function chatModerate(mode, senderId, messageId = null, messageElement = null) {
 	}
 }
 
-function renderModerationReview() {
+async function renderModerationReview() {
 	moderationReviewList.replaceChildren();
 	const records = moderationReviewRecords.get(moderationReviewType) || [];
 	for (const record of records) {
@@ -2440,8 +2444,8 @@ function renderModerationReview() {
 	}
 	if (records.length > 0) moderationReviewStatus.textContent = "";
 	else if (!moderationReviewLoading.has(moderationReviewType) &&
-		moderationReviewStatus.textContent === "Loading punishment records...") {
-		moderationReviewStatus.textContent = `No ${moderationReviewType} records found.`;
+		moderationReviewStatus.textContent === await translate("loadingPunishmentRecords")) {
+		moderationReviewStatus.textContent = await translate("noPunishmentRecords");
 	}
 	moderationReviewMoreButton.hidden = !moderationReviewHasMore.get(moderationReviewType);
 	moderationReviewMoreButton.disabled = moderationReviewLoading.has(moderationReviewType);
@@ -2455,7 +2459,7 @@ async function loadModerationReview(reset=false) {
 		moderationReviewOffsets.set(type, 0);
 		moderationReviewRecords.set(type, []);
 	}
-	moderationReviewStatus.textContent = "Loading punishment records...";
+	moderationReviewStatus.textContent = await translate("loadingPunishmentRecords");
 	moderationReviewMoreButton.disabled = true;
 	try {
 		const offset = moderationReviewOffsets.get(type) || 0;
@@ -2472,12 +2476,12 @@ async function loadModerationReview(reset=false) {
 	catch (error) {
 		if (type === moderationReviewType) {
 			moderationReviewStatus.textContent = error instanceof Error
-				? error.message : "Could not load punishment records.";
+				? error.message : await translate("couldNotLoadPunishmentRecords");
 		}
 	}
 	finally {
 		moderationReviewLoading.delete(type);
-		if (type === moderationReviewType) renderModerationReview();
+		if (type === moderationReviewType) await renderModerationReview();
 	}
 }
 
@@ -2513,7 +2517,7 @@ moderationReviewList.addEventListener("appeal-decision", async event => {
 	}
 	catch (error) {
 		recordElement.busy = false;
-		recordElement.errorMessage = error instanceof Error ? error.message : "Could not resolve appeal.";
+		recordElement.errorMessage = error instanceof Error ? error.message : await translate("couldNotResolveAppeal");
 		reloadAfterFailure = typeof error === "object" && error !== null &&
 			"status" in error && error.status === 409;
 	}
@@ -2697,12 +2701,12 @@ spectateUserIdInput.addEventListener("change", function(e) {
 });
 
 /**
- * @param {number} userIntId 
+ * @param {number} userIntId
  */
-function startedSpectating(userIntId) {
+async function startedSpectating(userIntId) {
 	spectateStartState = { x, y, z };
 	const spectatingChatName = intIdNames.get(userIntId);
-	spectateStatusLabel.textContent = "Spectating " + (spectatingChatName
+	spectateStatusLabel.textContent = (await translate("spectating")) + " " + (spectatingChatName
 		? `${spectatingChatName} (#${userIntId})`
 		: `#${userIntId}`);
 	setCanvasLocked(true);
@@ -2847,7 +2851,7 @@ overlayCopyButton.addEventListener("click", async function(e) {
 		], { duration: 1000, iterations: 1 });
 	}
 	else {
-		overlayCopyButton.children[2].textContent = "Failed: Overlay is too big!";
+		overlayCopyButton.children[2].textContent = await translate("overlayTooBig");
 		overlayCopyButton.children[2].animate([
 			{ opacity: 1 },
 			{ color: "red" }
@@ -2855,8 +2859,8 @@ overlayCopyButton.addEventListener("click", async function(e) {
 		if (overlayFailTimeout) {
 			clearTimeout(overlayFailTimeout);
 		}
-		overlayFailTimeout = setTimeout(() => {
-			overlayCopyButton.children[2].textContent = "Copied to clipboard!";
+		overlayFailTimeout = setTimeout(async () => {
+			overlayCopyButton.children[2].textContent = await translate("copiedToClipboard");
 		}, 1000)
 	}
 });
@@ -3002,12 +3006,12 @@ async function onChatContext(e, senderId, msgId) {
 			if (msgName[msgName.length - 1] === "~") {
 				msgName = msgName.slice(0, -1);
 				userNote.style.display = "block";
-				userNote.textContent = "This user is likely impersonating @" + msgName;
+				userNote.textContent = (await translate("impersonatingUser")) + msgName;
 			}
 			else if (msgName[msgName.length - 1] === "✓") {
 				msgName = msgName.slice(0, -1);
 				userNote.style.display = "block";
-				userNote.textContent = "This user is verified as @" + msgName;
+				userNote.textContent = (await translate("verifiedUser")) + msgName;
 			}
 			else {
 				userNote.style.display = "none";
