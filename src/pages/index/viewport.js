@@ -2,7 +2,7 @@
 import { $, lerp, hash } from "../../shared.js";
 import { CHAT_COLOURS, VIEWPORT_MODE } from "../../defaults.js";
 import { BoardRenderer } from "./board-renderer.js";
-import { enableWebglCanvas } from "./secret-settings.js";
+import { useLegacyCanvas2D } from "./secret-settings.js";
 import { runAudio } from "./game-audio.js";
 import { AUDIOS } from "./game-defaults.js";
 import { connectStatus, cooldownEndDate, HEIGHT, intIdNames, intIdPositions, sendServerMessage, WIDTH } from "./game-state.js";
@@ -27,11 +27,10 @@ const idPositionPlacer = /**@type {HTMLElement}*/($("#idPositionPlacer"));
 /**@type {BoardRenderer|null}*/ export let boardRenderer = null;
 /**@type {CanvasRenderingContext2D|null}*/export let canvasCtx = canvas.getContext("2d");
 
-// Initialise
-if (enableWebglCanvas) {
+if (!useLegacyCanvas2D) {
 	try {
 		boardRenderer = new BoardRenderer(viewportCanvas);
-		canvas.style.opacity = "0";			
+		canvas.style.opacity = "0";
 	}
 	catch (e) {
 		console.error(e);
