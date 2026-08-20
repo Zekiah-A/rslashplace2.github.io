@@ -4,6 +4,9 @@ import { until } from "lit/directives/until.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { CHAT_COLOURS, EMOJIS, CUSTOM_EMOJIS } from "../../defaults.js";
 import { sanitise, translate, hash, markdownParse } from "../../shared.js";
+import { intIdNames } from "./game-state.js";
+
+let nextMentionPopoverId = 0;
 
 export class PositionIndicator extends HTMLElement {
 	#root
@@ -99,6 +102,64 @@ export class LiveChatMouseEvent extends MouseEvent {
 	}
 }
 
+class ChatMention extends LitElement {
+	static properties = {
+		intId: { type: Number, attribute: "intid" }
+	};
+
+	#popoverId
+	#anchorName
+
+	constructor() {
+		super()
+		this.intId = 0
+		this.#popoverId = `chat-mention-popover-${++nextMentionPopoverId}`
+		this.#anchorName = `--${this.#popoverId}`
+	}
+
+	createRenderRoot() {
+		return this
+	}
+
+	/** @param {Event} event */
+	#showPopover(event) {
+		const trigger = /**@type {HTMLElement|null}*/(event.currentTarget)
+		const popover = /**@type {HTMLElement|null}*/(trigger?.nextElementSibling)
+		if (popover?.showPopover && !popover.matches(":popover-open")) {
+			popover.showPopover()
+		}
+	}
+
+	/** @param {Event} event */
+	#hidePopover(event) {
+		const trigger = /**@type {HTMLElement|null}*/(event.currentTarget)
+		const popover = /**@type {HTMLElement|null}*/(trigger?.nextElementSibling)
+		if (popover?.hidePopover && popover.matches(":popover-open")) {
+			popover.hidePopover()
+		}
+	}
+
+	render() {
+		const mentionedName = intIdNames.get(this.intId) || null
+		const displayName = mentionedName || `#${this.intId}`
+		return html`
+			<span class="chat-mention" role="button" tabindex="0"
+				aria-describedby=${this.#popoverId}
+				style=${styleMap({ "anchor-name": this.#anchorName })}
+				@mouseenter=${this.#showPopover}
+				@mouseleave=${this.#hidePopover}
+				@focus=${this.#showPopover}
+				@blur=${this.#hidePopover}
+				@click=${this.#showPopover}>@${displayName}</span>
+			<span id=${this.#popoverId} class="chat-mention-popover" popover="auto"
+				style=${styleMap({ "position-anchor": this.#anchorName })}>
+				<span>${mentionedName ? `@${mentionedName}` : "Unknown name"}</span>
+				<span>#${this.intId}</span>
+			</span>`
+	}
+}
+customElements.define("r-chat-mention", ChatMention);
+
 
 export class LiveChatMessage extends LitElement {
 	static properties = {
@@ -169,6 +230,11 @@ export class LiveChatMessage extends LitElement {
 			const size = isLargeEmoji ? "48" : "16"
 			return `<img src="custom_emojis/${source}.png" alt=":${source}:" title=":${source}:" width="${size}" height="${size}">`;
 		})	
+		parsedHTML = parsedHTML.replaceAll(/@#(\d+)(?![a-zA-Z0-9_])/g, (full, source) => {
+			const mentionedId = Number(source)
+			if (!Number.isSafeInteger(mentionedId) || mentionedId > 0xFFFFFFFF) return full
+			return `<r-chat-mention intid="${mentionedId}"></r-chat-mention>`
+		})
 
 		// Handle coordinates and generate final lit HTML
 		const formattedMessage = this.#parseCoordinates(parsedHTML);
@@ -176,7 +242,6 @@ export class LiveChatMessage extends LitElement {
 	}
 
 	/**
-	 * 
 	 * @param {string} parsedHTML 
 	 * @returns {any} Lit HTML fragment
 	 */
@@ -189,19 +254,17 @@ export class LiveChatMessage extends LitElement {
 			const [fullMatch, x, y] = match
 			const startIndex = match.index
 
-			// Push the text before the match
 			if (startIndex > lastIndex) {
 				parts.push(unsafeHTML(parsedHTML.slice(lastIndex, startIndex)))
 			}
 
 			const href = `${window.location.pathname}?x=${x}&y=${y}`
-			parts.push(html`<a href="${href}" @click=${(/**@type {MouseEvent}*/e) => 
+			parts.push(html`<a href="${href}" @click=${(/**@type {MouseEvent}*/e) =>
 				this.#notifyCoordinateClick(e, parseInt(x, 10), parseInt(y, 10))}>${x},${y}</a>`)
 
 			lastIndex = startIndex + fullMatch.length
 		}
 
-		// Push any text following matches
 		if (lastIndex < parsedHTML.length) {
 			parts.push(unsafeHTML(parsedHTML.slice(lastIndex)))
 		}

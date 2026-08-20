@@ -1251,6 +1251,48 @@ body[eventphase="3"] .coverer-title {
 	background-color: #ffff0080;
 }
 
+r-live-chat-message .chat-mention {
+	color: var(--reddit-orange);
+	cursor: help;
+	text-decoration: underline dotted;
+	text-underline-offset: 2px;
+}
+
+r-live-chat-message .chat-mention:focus-visible {
+	border-radius: 2px;
+	outline: 2px solid var(--reddit-orange);
+	outline-offset: 1px;
+}
+
+.chat-mention-popover {
+	display: none;
+	flex-direction: column;
+	gap: 2px;
+	padding: 6px 8px;
+	border: 1px solid var(--ui-panel-hover, #aaa);
+	border-radius: 4px;
+	background: var(--ui-panel-bg, white);
+	color: var(--ui-text, black);
+	box-shadow: var(--ui-shadow, 0 2px 8px #0005);
+	font-family: mono;
+	font-size: 12px;
+	white-space: nowrap;
+	pointer-events: none;
+}
+
+.chat-mention-popover:popover-open {
+	display: flex;
+}
+
+@supports (position-area: block-end) {
+	.chat-mention-popover:popover-open {
+		inset: auto;
+		margin: 4px;
+		position-area: block-end span-inline-end;
+		position-try-fallbacks: flip-block, flip-inline;
+	}
+}
+
 .chat-message-list > .message[reply] {
 	background-color: #e4efff;
 }
@@ -1470,6 +1512,9 @@ body[eventphase="3"] .coverer-title {
 	align-self: center;
 	text-align: left;
 	text-align: left;
+}
+.message-mention-suggestion > small {
+	opacity: 0.7;
 }
 #messageReplyPanel {
 	height: calc(var(--message-input-height) + 48px);

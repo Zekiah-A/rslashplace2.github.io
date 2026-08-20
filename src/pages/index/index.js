@@ -14,7 +14,7 @@ import { theme } from "./game-themes.js";
 import { BOARD, canvasLocked, CHANGES, chatName, connectStatus, COOLDOWN, cooldownEndDate, HEIGHT, intId, intIdNames, intIdPositions, onCooldown, PALETTE, PALETTE_USABLE_REGION, passkeyAuthState, placementMode, RAW_BOARD, setCooldown, setPasskeyAuthState, setPlacementMode, SOCKET_PIXELS, supportsCanvasPixelReports, WIDTH, placePixel, sendDefaultCaptchaResult, sendServerMessage, setDefaultCaptchaHandlers, makeServerRequest, connect } from "./game-state.js";
 import { generateIndicators, generatePalette, hideIndicators, showPalette } from "./palette.js";
 import { authenticatePasskey, getPasskeyStatus, registerPasskey, supportsPasskeys } from "./passkeys.js";
-import { isMention, normaliseBlockedUsers, isBlocked } from "./chat-helpers.js";
+import { findMentionQuery, formatMention, isMention, normaliseBlockedUsers, isBlocked } from "./chat-helpers.js";
 import "./popup.js";
 
 import FingerprintJS from "@fingerprintjs/fingerprintjs";
@@ -2124,7 +2124,11 @@ messageInput.addEventListener("keydown", function(/**@type {KeyboardEvent}*/ e) 
 	}
 
 	openChatPanel();
-	if (e.key == "Enter" && !e.shiftKey) {
+	if (e.key == "Escape" && !messageEmojisPanel.hasAttribute("closed")) {
+		closeMessageEmojisPanel();
+		e.preventDefault();
+	}
+	else if (e.key == "Enter" && !e.shiftKey) {
 		let sent = false;
 		// ctrl + enter send as place chat, enter send as normal live chat
 		if (e.ctrlKey) {
@@ -2155,15 +2159,7 @@ function chatInsertText(text) {
  * @param {number} senderId
  */
 function chatMentionUser(senderId) {
-	let mentionText = "@"
-	const identifier = intIdNames.get(senderId) || ("#" + senderId)
-	if (typeof identifier === "string") {
-		mentionText += identifier
-	}
-	else if (typeof identifier === "number") {
-		mentionText += "#" + identifier
-	}
-	chatInsertText(mentionText)
+	chatInsertText(formatMention(senderId) + " ")
 }
 
 messageTypePanel.children[0].addEventListener("click", function (/**@type {Event}*/e) {
@@ -2598,6 +2594,41 @@ function closeMessageEmojisPanel() {
 	messageInput.setAttribute("state", "default");
 }
 
+/** @param {{ query: string; start: number; end: number }} mentionQuery */
+function showMentionSuggestions(mentionQuery) {
+	const matches = Array.from(intIdNames.entries())
+		.filter(([userId, name]) => Number.isSafeInteger(userId) && userId > 0 &&
+			typeof name === "string" && name.toLowerCase().startsWith(mentionQuery.query))
+		.sort(([firstId, firstName], [secondId, secondName]) =>
+			firstName.localeCompare(secondName) || firstId - secondId)
+		.slice(0, 8);
+
+	for (const [userId, name] of matches) {
+		const entryElement = document.createElement("button");
+		entryElement.classList.add("message-emojis-suggestion", "message-mention-suggestion");
+		entryElement.title = `Mention @${name} as ${formatMention(userId)}`;
+
+		const entryLabel = document.createElement("span");
+		entryLabel.textContent = `@${name}`;
+		const entryId = document.createElement("small");
+		entryId.textContent = `#${userId}`;
+		entryElement.append(entryLabel, entryId);
+
+		entryElement.addEventListener("click", function() {
+			messageInput.setSelectionRange(mentionQuery.start, mentionQuery.end);
+			chatInsertText(formatMention(userId) + " ");
+			closeMessageEmojisPanel();
+			updateMessageInputHeight();
+		});
+		messageEmojisPanel.appendChild(entryElement);
+	}
+
+	if (matches.length === 0) return false;
+	messageInput.setAttribute("state", "command");
+	messageEmojisPanel.removeAttribute("closed");
+	return true;
+}
+
 let messageInputHeight = messageInput.scrollHeight
 function updateMessageInputHeight() {
 	messageInput.style.height = "0px";
@@ -2622,6 +2653,15 @@ messageInput.oninput = (/** @type {{ isTrusted: any; }} */ e) => {
 	updateMessageInputHeight();
 
 	messageEmojisPanel.innerHTML = "";
+	const mentionQuery = findMentionQuery(messageInput.value,
+		messageInput.selectionStart ?? messageInput.value.length);
+	if (mentionQuery) {
+		if (!showMentionSuggestions(mentionQuery)) {
+			closeMessageEmojisPanel();
+		}
+		return;
+	}
+
 	let comp = "";
 	let search = true;
 	let count = 0;
