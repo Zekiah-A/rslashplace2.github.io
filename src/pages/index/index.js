@@ -1572,27 +1572,29 @@ const channelMentionCounts = new Map();
 function getChannelMentionCount(channel) {
 	return channelMentionCounts.get(channel) || 0;
 }
+function createBadgeElement(className) {
+	const badge = document.createElement("span");
+	badge.className = className;
+	badge.hidden = true;
+	return badge;
+}
 /** @param {HTMLElement} container @param {string} badgeId @returns {HTMLElement} */
 function ensureChannelBadge(container, badgeId) {
 	let badge = container.querySelector(`#${badgeId}`);
 	if (!badge) {
-		badge = document.createElement("span");
+		badge = createBadgeElement("channel-mention-badge");
 		badge.id = badgeId;
-		badge.className = "channel-mention-badge";
-		badge.hidden = true;
 		container.style.position = "relative";
 		container.appendChild(badge);
 	}
 	return badge;
 }
-/** @param {HTMLElement} li @returns {HTMLElement} */
-function ensureDropdownBadge(li) {
-	let badge = li.querySelector(".channel-mention-badge");
+/** @param {HTMLElement} listItem @returns {HTMLElement} */
+function ensureDropdownBadge(listItem) {
+	let badge = listItem.querySelector(".channel-mention-badge");
 	if (!badge) {
-		badge = document.createElement("span");
-		badge.className = "channel-mention-badge inline";
-		badge.hidden = true;
-		li.appendChild(badge);
+		badge = createBadgeElement("channel-mention-badge inline");
+		listItem.appendChild(badge);
 	}
 	return badge;
 }
@@ -3123,12 +3125,12 @@ replyUserButton.addEventListener("click", function(e) {
 })
 blockUserButton.addEventListener("click", function(e) {
 	if (targetedIntId == null) return;
-	const tid = Number(targetedIntId);
-	if (isBlocked(tid, blockedUsers)) {
-		blockedUsers.splice(blockedUsers.indexOf(tid), 1);
+	const normalisedTargetId = Number(targetedIntId);
+	if (isBlocked(normalisedTargetId, blockedUsers)) {
+		blockedUsers.splice(blockedUsers.indexOf(normalisedTargetId), 1);
 	}
-	else if (tid !== intId) {
-		blockedUsers.push(tid);
+	else if (normalisedTargetId !== intId) {
+		blockedUsers.push(normalisedTargetId);
 	}
 	localStorage.blocked = blockedUsers.join(",");
 	chatContext.style.display = "none";

@@ -32,12 +32,12 @@ export function normaliseBlockedUsers(list) {
 	if (!Array.isArray(list)) return [];
 	const out = [];
 	const seen = new Set();
-	for (const v of list) {
-		const n = Number(v);
-		if (!Number.isFinite(n) || n === 0) continue;
-		if (seen.has(n)) continue;
-		seen.add(n);
-		out.push(n);
+	for (const rawEntry of list) {
+		const numericId = Number(rawEntry);
+		if (!Number.isFinite(numericId) || numericId === 0) continue;
+		if (seen.has(numericId)) continue;
+		seen.add(numericId);
+		out.push(numericId);
 	}
 	return out;
 }
@@ -46,9 +46,4 @@ export function normaliseBlockedUsers(list) {
 export function isBlocked(senderIntId, blockedList) {
 	if (!Array.isArray(blockedList) || blockedList.length === 0) return false;
 	return blockedList.includes(Number(senderIntId));
-}
-
-/** @param {string} channel @returns {boolean} */
-export function isLanguageChannel(channel) {
-	return typeof channel === "string" && !channel.startsWith("group:");
 }
