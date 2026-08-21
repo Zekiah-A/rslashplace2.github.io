@@ -1,10 +1,50 @@
 import { startCountDown, toCountdownString } from "./event-timer.js"
+import { DEFAULT_THEMES } from "../../defaults.js";
+import { theme } from "./game-themes.js";
+
+const DISABLED_DATE_KEY = "august21DisabledDate";
+
+/**
+ * @param {Date} date
+ */
+function toLocalDateKey(date) {
+	return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+}
 
 // Show game popup
-function isTodayAugust21st() {
-	const now = new Date()
+export function isTodayAugust21st(now = new Date()) {
 	// August is month 7 (zero-based)
 	return now.getMonth() === 7 && now.getDate() === 21
+}
+
+export function shouldEnableAugust21() {
+	const now = new Date();
+	return isTodayAugust21st(now) && localStorage.getItem(DISABLED_DATE_KEY) !== toLocalDateKey(now);
+}
+
+export function disableAugust21ForToday() {
+	localStorage.setItem(DISABLED_DATE_KEY, toLocalDateKey(new Date()));
+	if (localStorage.effects === "august21") {
+		localStorage.removeItem("effects");
+	}
+}
+
+function startAugust21Effect() {
+	if (!shouldEnableAugust21()) return;
+	const themeSet = DEFAULT_THEMES.get("r/place 2022");
+	if (!themeSet) return;
+	theme(themeSet, "dark", "august21").catch((error) => {
+		console.error("Failed to start the August 21 effect", error);
+	});
+	const themeName = document.getElementById("themeDropName");
+	if (themeName) themeName.textContent = "☢️ AUGUST 21";
+}
+
+if (document.readyState === "complete") {
+	startAugust21Effect();
+}
+else {
+	window.addEventListener("load", startAugust21Effect, { once: true });
 }
 
 function getNextAugust21st() {
