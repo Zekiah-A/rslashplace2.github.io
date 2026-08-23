@@ -5,6 +5,7 @@ import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { CHAT_COLOURS, EMOJIS, CUSTOM_EMOJIS } from "../../defaults.js";
 import { sanitise, translate, hash, markdownParse } from "../../shared.js";
 import { intIdNames } from "./game-state.js";
+import { hidePopover, showPopover } from "./popover.js";
 
 let nextMentionPopoverId = 0;
 
@@ -125,18 +126,14 @@ class ChatMention extends LitElement {
 	#showPopover(event) {
 		const trigger = /**@type {HTMLElement|null}*/(event.currentTarget)
 		const popover = /**@type {HTMLElement|null}*/(trigger?.nextElementSibling)
-		if (popover?.showPopover && !popover.matches(":popover-open")) {
-			popover.showPopover()
-		}
+		if (popover) showPopover(popover)
 	}
 
 	/** @param {Event} event */
 	#hidePopover(event) {
 		const trigger = /**@type {HTMLElement|null}*/(event.currentTarget)
 		const popover = /**@type {HTMLElement|null}*/(trigger?.nextElementSibling)
-		if (popover?.hidePopover && popover.matches(":popover-open")) {
-			popover.hidePopover()
-		}
+		if (popover) hidePopover(popover)
 	}
 
 	render() {

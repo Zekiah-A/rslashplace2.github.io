@@ -6,6 +6,7 @@
 	--ui-text: black;
 	--ui-shadow: 0 0 10px rgba(0,0,0,0.4);
 	--ui-border: none;
+	--message-input-font-size: 16px;
 }
 
 :root[data-variant="dark"] {
@@ -226,6 +227,10 @@ dialog {
 	border-radius: 5px;
 	box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.5);
 }
+.context-menu[popover] {
+	border: none;
+	box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.5);
+}
 .context-menu > menu > li:hover {
 	background: var(--ui-panel-hover);
 	border-radius: 4px;
@@ -310,6 +315,10 @@ dialog {
 	box-shadow: 0 0 30px black;
 }
 
+#messageInput, #messageInputMirror {
+	font-family: bold;
+	font-size: var(--message-input-font-size);
+}
 #messageInput {
 	color: var(--ui-text);
 	padding-top: 8px;
@@ -319,7 +328,6 @@ dialog {
 	padding: 8px 5px 5px;
 	border: 0 solid transparent;
 	border-radius: 10px;
-	font-family: bold;
 }
 :root[data-variant="dark"] #messageInputMirror {
 	border-width: 1px;

@@ -8,6 +8,7 @@ import { AUDIOS } from "./game-defaults.js";
 import { connectStatus, cooldownEndDate, HEIGHT, intIdNames, intIdPositions, sendServerMessage, WIDTH } from "./game-state.js";
 import { showPalette } from "./palette.js";
 import { BoardRendererSphere } from "./board-renderer-sphere.js";
+import { enablePopoverDismissal, hidePopover, isPopoverOpen, positionPopover, showPopover } from "./popover.js";
 
 const viewport = /**@type {HTMLElement}*/($("#viewport"));
 const canvParent1 = /**@type {HTMLElement}*/($("#canvparent1"));
@@ -16,6 +17,7 @@ const edge = /**@type {HTMLElement}*/($("#edge"));
 const canvas = /**@type {HTMLCanvasElement}*/($("#canvas"));
 const viewportCanvas = /**@type {HTMLCanvasElement}*/($("#viewportCanvas"));
 const placeContext = /**@type {HTMLElement}*/($("#placeContext"));
+enablePopoverDismissal(placeContext);
 const canvSelect = /**@type {HTMLElement}*/($("#canvselect"));
 const placeChatMessages = /**@type {HTMLElement}*/($("#placeChatMessages"));
 const positionIndicator = /**@type {import("./game-elements.js").PositionIndicator}*/($("#positionIndicator"));
@@ -233,9 +235,7 @@ viewport.addEventListener("mousedown", function(/**@type {MouseEvent}*/ e) {
 	moved = 3;
 	mouseDown = e.button;
 
-	if (placeContext.style.display == "block") {
-		placeContext.style.display = "none";
-	}
+	hidePopover(placeContext);
 });
 viewport.addEventListener("mouseup", function(/**@type {MouseEvent}*/ e) {
 	if (!(e instanceof Event) || !e.isTrusted || !(e.target instanceof HTMLElement)) {
@@ -262,9 +262,11 @@ viewport.addEventListener("contextmenu", function(e) {
 		return;
 	}
 
-	placeContext.style.display = "block";
 	const { x, y } = screenToCanvas(e.clientX, e.clientY);
-	setPlaceContextPosition(x, y);
+	placeContext.dataset.x = String(x);
+	placeContext.dataset.y = String(y);
+	positionPopover(placeContext, e.clientX, e.clientY);
+	showPopover(placeContext);
 });
 
 // Miscellaneous positioning handling
@@ -359,15 +361,14 @@ function setCanvasAttachmentPosition(element, px, py, z) {
 	const translateY = y * z * -50;
 	const screenX = (px * scale) + translateX + viewport.offsetWidth / 2;
 	const screenY = (py * scale) + translateY + viewport.offsetHeight / 2;
-	element.style.left = `${screenX}px`;
-	element.style.top = `${screenY}px`;
+	positionPopover(element, screenX, screenY);
 }
 /**
  * @param {number} canvX 
  * @param {number} canvY 
  */
 function setPlaceContextPosition(canvX, canvY) {
-	if (placeContext.style.display === "block") {
+	if (isPopoverOpen(placeContext)) {
 		placeContext.dataset.x = String(canvX);
 		placeContext.dataset.y = String(canvY);
 		setCanvasAttachmentPosition(placeContext, canvX, canvY, z);

@@ -22,6 +22,7 @@ import FingerprintJS from "@fingerprintjs/fingerprintjs";
 import DisableDevtool from "disable-devtool";
 import { BoardRendererSphere } from "./board-renderer-sphere.js";
 import { getOwnPunishments, listPunishments, resolvePunishmentAppeal, sendModerationAction, submitPunishmentAppeal } from "./moderation-api.js";
+import { enablePopoverDismissal, hidePopover, isPopoverOpen, positionPopover, showPopover } from "./popover.js";
 
 if (import.meta.env.PROD) {
 	DisableDevtool({
@@ -174,6 +175,7 @@ const messageInputEmojiPanel = /**@type {HTMLElement}*/($("#messageInputEmojiPan
 const overlayInput = /**@type {HTMLInputElement}*/($("#overlayInput"));
 const overlaySliderValue = /**@type {HTMLElement}*/($("#overlaySliderValue"));
 const chatContext = /**@type {HTMLElement}*/($("#chatContext"));
+enablePopoverDismissal(chatContext);
 const userNote = /**@type {HTMLElement}*/($("#userNote"));
 const mentionUserButton = /**@type {HTMLButtonElement}*/($("#mentionUserButton"));
 const replyUserButton = /**@type {HTMLButtonElement}*/($("#replyUserButton"));
@@ -897,7 +899,7 @@ placeContextReportButton.addEventListener("click", function() {
 	const inBounds = Number.isFinite(pixelX) && Number.isFinite(pixelY) &&
 		pixelX >= 0 && pixelX < WIDTH && pixelY >= 0 && pixelY < HEIGHT;
 	selectedCanvasReportPosition = inBounds ? pixelX + pixelY * WIDTH : null;
-	placeContext.style.display = "none";
+	hidePopover(placeContext);
 	canvasReportPosition.textContent = `${pixelX}, ${pixelY}`;
 	canvasReportForm.reset();
 	canvasReportReason.disabled = !inBounds;
@@ -917,7 +919,7 @@ const placeContextInfoButton = /**@type {HTMLButtonElement}*/($("#placeContextIn
 placeContextInfoButton.addEventListener("click", function(e) {
 	const px = Number(placeContext.dataset.x);
 	const py = Number(placeContext.dataset.y);
-	placeContext.style.display = "none";
+	hidePopover(placeContext);
 	showPlacerInfo(px, py);
 });
 if (!localStorage.vip?.startsWith("!")) {
@@ -3139,7 +3141,7 @@ chatCloseButton.addEventListener("click", closeChatPanel);
 closeChatPanel();
 
 function closeChatContexts() {
-	chatContext.style.display = "none";
+	hidePopover(chatContext);
 	channelDropParent.removeAttribute("open");
 }
 chatPanel.addEventListener("touchstart", closeChatContexts);
@@ -3190,8 +3192,8 @@ spaceFiller.addEventListener("click", openGame);
 async function onChatContext(e, senderId, msgId) {
 	e.preventDefault();
 
-	if (chatContext.style.display == "block") {
-		chatContext.style.display = "none";
+	if (isPopoverOpen(chatContext)) {
+		hidePopover(chatContext);
 	}
 	else {
 		let msgName = intIdNames.get(senderId);
@@ -3214,7 +3216,8 @@ async function onChatContext(e, senderId, msgId) {
 
 		targetedMsgId = msgId;
 		targetedIntId = senderId;
-		chatContext.style.display = "block";
+		positionPopover(chatContext, e.clientX, e.clientY);
+		showPopover(chatContext);
 		mentionUserButton.textContent = `${await translate("mention")} ${identifier}`;
 		replyUserButton.textContent = `${await translate("replyTo")} ${identifier}`;
 		blockUserButton.textContent =
@@ -3228,9 +3231,6 @@ async function onChatContext(e, senderId, msgId) {
 			blockUserButton.disabled = false;
 			changeMyNameButton.style.display = "none";
 		}
-
-		chatContext.style.left = e.pageX - chatPanel.offsetLeft + "px"
-		chatContext.style.top = e.pageY - chatPanel.offsetTop + "px"
 	}
 }
 mentionUserButton.addEventListener("click", function(e) {
@@ -3239,7 +3239,7 @@ mentionUserButton.addEventListener("click", function(e) {
 	}
 
 	chatMentionUser(targetedIntId);
-	chatContext.style.display = "none";
+	hidePopover(chatContext);
 });
 replyUserButton.addEventListener("click", function(e) {
 	if (!targetedIntId) {
@@ -3247,7 +3247,7 @@ replyUserButton.addEventListener("click", function(e) {
 	}
 
 	chatReply(targetedMsgId, targetedIntId);
-	chatContext.style.display = "none";
+	hidePopover(chatContext);
 })
 blockUserButton.addEventListener("click", function(e) {
 	if (targetedIntId == null) return;
@@ -3259,7 +3259,7 @@ blockUserButton.addEventListener("click", function(e) {
 		blockedUsers.push(normalisedTargetId);
 	}
 	localStorage.blocked = blockedUsers.join(",");
-	chatContext.style.display = "none";
+	hidePopover(chatContext);
 });
 changeMyNameButton.addEventListener("click", function(e) {
 	if (!intId) {
@@ -3268,7 +3268,7 @@ changeMyNameButton.addEventListener("click", function(e) {
 
 	namePanel.style.visibility = "visible";
 	nameInput.value = intIdNames.get(intId) || "";
-	chatContext.style.display = "none";
+	hidePopover(chatContext);
 });
 
 // TODO: For some inconceivably stupid reason this keeps activating on false positives? Find a solution

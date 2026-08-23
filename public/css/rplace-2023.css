@@ -9,6 +9,7 @@
 	--pixel-shadow-color: rgba(0, 0, 0, 0.75);
 	--ui-panel-bg: #ffffff;
 	--gray-color: #576f76;
+	--message-input-font-size: 1rem;
 }
 :root, button, html, input, select, textarea {
 	font-family: var(--font-pixel);
@@ -127,6 +128,10 @@ body {
 .context-menu {
 	border: var(--pixel-border);
 	background-color: white;
+}
+.context-menu[popover] {
+	border: var(--pixel-border);
+	box-shadow: none;
 }
 .context-menu > menu > li:hover {
 	background: lightgrey;
@@ -358,6 +363,10 @@ r-close-icon {
 	background: white;
 	padding: 8px;
 }
+#messageInput, #messageInputMirror {
+	font-family: var(--font-pixel);
+	font-size: var(--message-input-font-size);
+}
 #messageInput {
 	color: var(--ui-text);
 	padding: 4px;
@@ -369,7 +378,6 @@ r-close-icon {
 #messageInputMirror {
 	padding: 8px 58px 4px 4px;
 	border: var(--pixel-border-size) solid transparent;
-	font-family: var(--font-pixel);
 }
 #messageTypePanel {
 	height: calc(var(--message-input-height) + 72px);

@@ -1144,7 +1144,6 @@ body[eventphase="3"] .coverer-title {
 	box-sizing: border-box;
 	overflow: hidden;
 	color: transparent;
-	font-size: 16px;
 	line-height: normal;
 	white-space: pre-wrap;
 	overflow-wrap: break-word;
@@ -1841,6 +1840,11 @@ kbd {
 	user-select: none;
 	transition: transform .1s;
 	z-index: 2;
+}
+.context-menu[popover] {
+	position: fixed;
+	inset: auto;
+	margin: 0;
 }
 .context-menu > menu {
 	padding: 0px;
