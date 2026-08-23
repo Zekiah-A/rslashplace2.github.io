@@ -14,12 +14,15 @@ import { theme } from "./game-themes.js";
 import { BOARD, canvasLocked, CHANGES, chatName, connectStatus, COOLDOWN, cooldownEndDate, HEIGHT, intId, intIdNames, intIdPositions, onCooldown, PALETTE, PALETTE_USABLE_REGION, passkeyAuthState, placementMode, RAW_BOARD, setCooldown, setPasskeyAuthState, setPlacementMode, SOCKET_PIXELS, supportsCanvasPixelReports, WIDTH, placePixel, sendDefaultCaptchaResult, sendServerMessage, setDefaultCaptchaHandlers, makeServerRequest, connect } from "./game-state.js";
 import { generateIndicators, generatePalette, hideIndicators, showPalette } from "./palette.js";
 import { authenticatePasskey, getPasskeyStatus, registerPasskey, supportsPasskeys } from "./passkeys.js";
+import { findMentionQuery, findTextEdit, formatMention, isMention, normaliseBlockedUsers,
+	isBlocked, rebaseMentionTokens, serialiseMentionTokens } from "./chat-helpers.js";
 import "./popup.js";
 
 import FingerprintJS from "@fingerprintjs/fingerprintjs";
 import DisableDevtool from "disable-devtool";
 import { BoardRendererSphere } from "./board-renderer-sphere.js";
 import { getOwnPunishments, listPunishments, resolvePunishmentAppeal, sendModerationAction, submitPunishmentAppeal } from "./moderation-api.js";
+import { enablePopoverDismissal, hidePopover, isPopoverOpen, positionPopover, showPopover } from "./popover.js";
 
 if (import.meta.env.PROD) {
 	DisableDevtool({
@@ -122,7 +125,8 @@ const passkeyMenu = /**@type {HTMLElement}*/($("#passkeyMenu"));
 const passkeyMenuTitle = /**@type {HTMLElement}*/($("#passkeyMenuTitle"));
 const passkeyMenuMessage = /**@type {HTMLElement}*/($("#passkeyMenuMessage"));
 const passkeyMenuButton = /**@type {HTMLButtonElement}*/($("#passkeyMenuButton"));
-const messageInput = /**@type {HTMLInputElement}*/($("#messageInput"));
+const messageInput = /**@type {HTMLTextAreaElement}*/($("#messageInput"));
+const messageInputMirror = /**@type {HTMLElement}*/($("#messageInputMirror"));
 const messageTypePanel = /**@type {HTMLElement}*/($("#messageTypePanel"));
 const messageInputGifPanel = /**@type {import("../../shared-elements.js").GifPanel}*/($("#messageInputGifPanel"));
 const messageReplyPanel = /**@type {HTMLElement}*/($("#messageReplyPanel"));
@@ -171,6 +175,7 @@ const messageInputEmojiPanel = /**@type {HTMLElement}*/($("#messageInputEmojiPan
 const overlayInput = /**@type {HTMLInputElement}*/($("#overlayInput"));
 const overlaySliderValue = /**@type {HTMLElement}*/($("#overlaySliderValue"));
 const chatContext = /**@type {HTMLElement}*/($("#chatContext"));
+enablePopoverDismissal(chatContext);
 const userNote = /**@type {HTMLElement}*/($("#userNote"));
 const mentionUserButton = /**@type {HTMLButtonElement}*/($("#mentionUserButton"));
 const replyUserButton = /**@type {HTMLButtonElement}*/($("#replyUserButton"));
@@ -460,9 +465,10 @@ window.addEventListener("livechatmessage", (/**@type {Event}*/e) => {
 		message.reactions
 	);
 
-	// Apply interactivity to message element
 	applyLiveChatMessageInteractivity(newMessage, channel);
-
+	if (isMention(message.content, chatName, intId) && message.senderIntId !== intId && !isBlocked(message.senderIntId, blockedUsers)) {
+		incrementChannelMention(channel);
+	}
 	const atScrollBottom = chatMessages.scrollTop + chatMessages.offsetHeight + 64 >= chatMessages.scrollHeight;
 
 	// Update message storage
@@ -893,7 +899,7 @@ placeContextReportButton.addEventListener("click", async function() {
 	const inBounds = Number.isFinite(pixelX) && Number.isFinite(pixelY) &&
 		pixelX >= 0 && pixelX < WIDTH && pixelY >= 0 && pixelY < HEIGHT;
 	selectedCanvasReportPosition = inBounds ? pixelX + pixelY * WIDTH : null;
-	placeContext.style.display = "none";
+	hidePopover(placeContext);
 	canvasReportPosition.textContent = `${pixelX}, ${pixelY}`;
 	canvasReportForm.reset();
 	canvasReportReason.disabled = !inBounds;
@@ -913,7 +919,7 @@ const placeContextInfoButton = /**@type {HTMLButtonElement}*/($("#placeContextIn
 placeContextInfoButton.addEventListener("click", function(e) {
 	const px = Number(placeContext.dataset.x);
 	const py = Number(placeContext.dataset.y);
-	placeContext.style.display = "none";
+	hidePopover(placeContext);
 	showPlacerInfo(px, py);
 });
 if (!localStorage.vip?.startsWith("!")) {
@@ -1565,6 +1571,78 @@ let extraLanguage = (lang == "en" ? "tr" : lang);
 	[extraLanguage, []],
 	["en", []]
 ]);
+const channelMentionCounts = new Map();
+/** @param {string} channel @returns {number} */
+function getChannelMentionCount(channel) {
+	return channelMentionCounts.get(channel) || 0;
+}
+function createBadgeElement(className) {
+	const badge = document.createElement("span");
+	badge.className = className;
+	badge.hidden = true;
+	return badge;
+}
+/** @param {HTMLElement} container @param {string} badgeId @returns {HTMLElement} */
+function ensureChannelBadge(container, badgeId) {
+	let badge = container.querySelector(`#${badgeId}`);
+	if (!badge) {
+		badge = createBadgeElement("channel-mention-badge");
+		badge.id = badgeId;
+		container.style.position = "relative";
+		container.appendChild(badge);
+	}
+	return badge;
+}
+/** @param {HTMLElement} listItem @returns {HTMLElement} */
+function ensureDropdownBadge(listItem) {
+	let badge = listItem.querySelector(".channel-mention-badge");
+	if (!badge) {
+		badge = createBadgeElement("channel-mention-badge inline");
+		listItem.appendChild(badge);
+	}
+	return badge;
+}
+function updateChannelBadges() {
+	const mineCount = getChannelMentionCount(extraLanguage);
+	const enCount = getChannelMentionCount("en");
+	const mineBadge = ensureChannelBadge(channelMineButton, "channelMineBadge");
+	mineBadge.textContent = mineCount > 99 ? "99+" : String(mineCount);
+	mineBadge.hidden = mineCount === 0;
+
+	const enBadge = ensureChannelBadge(channelEnButton, "channelEnBadge");
+	enBadge.textContent = enCount > 99 ? "99+" : String(enCount);
+	enBadge.hidden = enCount === 0;
+
+	const totalOthers = Array.from(channelMentionCounts.entries())
+		.filter(([ch]) => ch !== currentChannel)
+		.reduce((sum, [, n]) => sum + n, 0);
+	const dropParentBadge = ensureChannelBadge(channelDropParent, "channelDropBadge");
+	dropParentBadge.textContent = totalOthers > 99 ? "99+" : String(totalOthers);
+	dropParentBadge.hidden = totalOthers === 0;
+
+	for (const li of channelDropMenu.children) {
+		if (!(li instanceof HTMLElement)) continue;
+		const code = li.dataset.lang;
+		if (!code) continue;
+		const count = getChannelMentionCount(code);
+		const badge = ensureDropdownBadge(li);
+		badge.textContent = count > 99 ? "99+" : String(count);
+		badge.hidden = count === 0;
+	}
+}
+/** @param {string} channel */
+function incrementChannelMention(channel) {
+	if (!channel || channel === currentChannel) return;
+	channelMentionCounts.set(channel, (channelMentionCounts.get(channel) || 0) + 1);
+	updateChannelBadges();
+}
+/** @param {string} channel */
+function clearChannelMentions(channel) {
+	if (channelMentionCounts.has(channel)) {
+		channelMentionCounts.delete(channel);
+		updateChannelBadges();
+	}
+}
 let chatPreviousLoadDebounce = false;
 let chatPreviousAutoLoad = false;
 let currentChannel = lang;
@@ -1655,6 +1733,7 @@ function switchLanguageChannel(selected) {
 		chatCancelReplies()
 	}
 	currentChannel = selected
+	clearChannelMentions(selected);
 	chatMessages.style.direction = (LANG_INFOS.get(selected)?.rtl) ? "rtl" : "ltr"
 
 	if (selected == "en") {
@@ -1809,18 +1888,15 @@ function applyLiveChatMessageInteractivity(message, channel = "") {
 		chatModerate("delete", senderId, messageId, messageElement);
 	});
 
-	// Apply user blocking
-	if (message.senderIntId !== 0 && blockedUsers.includes(message.senderIntId)) {
+	// Apply user blocking — use normalised numeric list (see chat-helpers.js)
+	if (message.senderIntId !== 0 && isBlocked(message.senderIntId, blockedUsers)) {
 		message.style.color = "transparent";
 		message.style.textShadow = "0px 0px 6px black";
 	}
 
-	// Handle mentions
-	if (message.content.includes("@" + chatName) ||
-		message.content.includes("@#" + intId) ||
-		message.content.includes("@everyone")) {
+	if (isMention(message.content, chatName, intId)) {
 		message.setAttribute("mention", "true");
-		if (channel === currentChannel) {
+		if (message.senderIntId !== intId && !isBlocked(message.senderIntId, blockedUsers)) {
 			runAudio(AUDIOS.closePalette);
 		}
 	}
@@ -2046,25 +2122,93 @@ chatPreviousButton.addEventListener("click", () => {
 	chatPreviousAutoLoad = true	;
 })
 
+/** @type {import("./chat-helpers.js").MentionToken[]} */
+let messageMentionTokens = [];
+let previousMessageInputValue = messageInput.value;
+
+function renderMessageInputMirror() {
+	let previousTokenEnd = 0;
+	messageMentionTokens = messageMentionTokens
+		.filter(token => token.start >= 0 && token.end <= messageInput.value.length &&
+			messageInput.value.slice(token.start, token.end) === token.label)
+		.sort((first, second) => first.start - second.start)
+		.filter(token => {
+			if (token.start < previousTokenEnd) return false;
+			previousTokenEnd = token.end;
+			return true;
+		});
+
+	const fragment = document.createDocumentFragment();
+	let currentIndex = 0;
+	for (const token of messageMentionTokens) {
+		fragment.append(document.createTextNode(messageInput.value.slice(currentIndex, token.start)));
+		const highlight = document.createElement("span");
+		highlight.className = "linked-mention";
+		highlight.textContent = token.label;
+		fragment.append(highlight);
+		currentIndex = token.end;
+	}
+	fragment.append(document.createTextNode(messageInput.value.slice(currentIndex)));
+	messageInputMirror.replaceChildren(fragment);
+	messageInputMirror.scrollTop = messageInput.scrollTop;
+	messageInputMirror.scrollLeft = messageInput.scrollLeft;
+}
+
+function syncMessageInputValue() {
+	const nextValue = messageInput.value;
+	messageMentionTokens = rebaseMentionTokens(messageMentionTokens,
+		findTextEdit(previousMessageInputValue, nextValue));
+	previousMessageInputValue = nextValue;
+	renderMessageInputMirror();
+}
+
+/** @param {string} value */
+function setMessageInputValue(value) {
+	messageInput.value = value;
+	syncMessageInputValue();
+	updateMessageInputHeight();
+}
+
+function clearMessageInput() {
+	messageInput.value = "";
+	previousMessageInputValue = "";
+	messageMentionTokens = [];
+	renderMessageInputMirror();
+	updateMessageInputHeight();
+}
+
+function getMessageInputWireValue() {
+	return serialiseMentionTokens(messageInput.value, messageMentionTokens);
+}
+
+messageInput.addEventListener("scroll", () => {
+	messageInputMirror.scrollTop = messageInput.scrollTop;
+	messageInputMirror.scrollLeft = messageInput.scrollLeft;
+});
+renderMessageInputMirror();
+
 messageInput.addEventListener("keydown", function(/**@type {KeyboardEvent}*/ e) {
 	if (!(e instanceof Event) || !e.isTrusted) {
 		return;
 	}
 
 	openChatPanel();
-	if (e.key == "Enter" && !e.shiftKey) {
+	if (e.key == "Escape" && !messageEmojisPanel.hasAttribute("closed")) {
+		closeMessageEmojisPanel();
+		e.preventDefault();
+	}
+	else if (e.key == "Enter" && !e.shiftKey) {
 		let sent = false;
 		// ctrl + enter send as place chat, enter send as normal live chat
 		if (e.ctrlKey) {
 			sent = sendPlaceChatMsg(messageInput.value, e);
 		}
 		else {
-			sent = sendLiveChatMsg(messageInput.value, e);
+			sent = sendLiveChatMsg(getMessageInputWireValue(), e);
 		}
 		e.preventDefault()
 		if (sent) {
-			messageInput.value = ""
-			updateMessageInputHeight()
+			clearMessageInput()
 		}
 	}
 });
@@ -2072,26 +2216,37 @@ messageInput.addEventListener("focus", openChatPanel);
 
 /**
  * @param {string} text
+ * @returns {{ start: number; end: number }}
  */
 function chatInsertText(text) {
-	const [ start, end ] = [ messageInput.selectionStart, messageInput.selectionEnd ]
-	messageInput.setRangeText(text, start || 0, end || 0, "end")
+	const [ start, end ] = [ messageInput.selectionStart ?? 0, messageInput.selectionEnd ?? 0 ]
+	messageInput.setRangeText(text, start, end, "end")
+	messageMentionTokens = rebaseMentionTokens(messageMentionTokens, {
+		start,
+		oldEnd: end,
+		newEnd: start + text.length
+	})
+	previousMessageInputValue = messageInput.value
+	renderMessageInputMirror()
+	updateMessageInputHeight()
 	messageInput.focus()
+	return { start, end: start + text.length }
 }
 
 /**
  * @param {number} senderId
  */
 function chatMentionUser(senderId) {
-	let mentionText = "@"
-	const identifier = intIdNames.get(senderId) || ("#" + senderId)
-	if (typeof identifier === "string") {
-		mentionText += identifier
-	}
-	else if (typeof identifier === "number") {
-		mentionText += "#" + identifier
-	}
-	chatInsertText(mentionText)
+	if (!Number.isSafeInteger(senderId) || senderId <= 0) return;
+	const label = `@${intIdNames.get(senderId) || `#${senderId}`}`;
+	const insertedRange = chatInsertText(label + " ");
+	messageMentionTokens.push({
+		start: insertedRange.start,
+		end: insertedRange.start + label.length,
+		label,
+		intId: senderId
+	});
+	renderMessageInputMirror();
 }
 
 messageTypePanel.children[0].addEventListener("click", function (/**@type {Event}*/e) {
@@ -2100,7 +2255,7 @@ messageTypePanel.children[0].addEventListener("click", function (/**@type {Event
 	}
 
 	if (sendPlaceChatMsg(messageInput.value, e)) {
-		messageInput.value = "";
+		clearMessageInput();
 	}
 });
 messageTypePanel.children[1].addEventListener("click", function(/**@type {Event}*/e) {
@@ -2108,8 +2263,8 @@ messageTypePanel.children[1].addEventListener("click", function(/**@type {Event}
 		return;
 	}
 
-	if (sendLiveChatMsg(messageInput.value, e)) {
-		messageInput.value = "";
+	if (sendLiveChatMsg(getMessageInputWireValue(), e)) {
+		clearMessageInput();
 	}
 });
 
@@ -2530,6 +2685,41 @@ function closeMessageEmojisPanel() {
 	messageInput.setAttribute("state", "default");
 }
 
+/** @param {{ query: string; start: number; end: number }} mentionQuery */
+function showMentionSuggestions(mentionQuery) {
+	const matches = Array.from(intIdNames.entries())
+		.filter(([userId, name]) => Number.isSafeInteger(userId) && userId > 0 &&
+			typeof name === "string" && name.toLowerCase().startsWith(mentionQuery.query))
+		.sort(([firstId, firstName], [secondId, secondName]) =>
+			firstName.localeCompare(secondName) || firstId - secondId)
+		.slice(0, 8);
+
+	for (const [userId, name] of matches) {
+		const entryElement = document.createElement("button");
+		entryElement.classList.add("message-emojis-suggestion", "message-mention-suggestion");
+		entryElement.title = `Mention @${name} as ${formatMention(userId)}`;
+
+		const entryLabel = document.createElement("span");
+		entryLabel.textContent = `@${name}`;
+		const entryId = document.createElement("small");
+		entryId.textContent = `#${userId}`;
+		entryElement.append(entryLabel, entryId);
+
+		entryElement.addEventListener("click", function() {
+			messageInput.setSelectionRange(mentionQuery.start, mentionQuery.end);
+			chatMentionUser(userId);
+			closeMessageEmojisPanel();
+			updateMessageInputHeight();
+		});
+		messageEmojisPanel.appendChild(entryElement);
+	}
+
+	if (matches.length === 0) return false;
+	messageInput.setAttribute("state", "command");
+	messageEmojisPanel.removeAttribute("closed");
+	return true;
+}
+
 let messageInputHeight = messageInput.scrollHeight
 function updateMessageInputHeight() {
 	messageInput.style.height = "0px";
@@ -2551,9 +2741,19 @@ messageInput.oninput = (/** @type {{ isTrusted: any; }} */ e) => {
 	if (!e.isTrusted) {
 		return;
 	}
+	syncMessageInputValue();
 	updateMessageInputHeight();
 
 	messageEmojisPanel.innerHTML = "";
+	const mentionQuery = findMentionQuery(messageInput.value,
+		messageInput.selectionStart ?? messageInput.value.length);
+	if (mentionQuery) {
+		if (!showMentionSuggestions(mentionQuery)) {
+			closeMessageEmojisPanel();
+		}
+		return;
+	}
+
 	let comp = "";
 	let search = true;
 	let count = 0;
@@ -2606,7 +2806,7 @@ messageInput.oninput = (/** @type {{ isTrusted: any; }} */ e) => {
 			entryElement.addEventListener("click", function() {
 				for (let i = messageInput.value.length - 1; i >= 0; i--) {
 					if (messageInput.value[i] == ":") {
-						messageInput.value = messageInput.value.slice(0, i) + value;
+						setMessageInputValue(messageInput.value.slice(0, i) + value);
 						closeMessageEmojisPanel();
 						break
 					}
@@ -2617,7 +2817,7 @@ messageInput.oninput = (/** @type {{ isTrusted: any; }} */ e) => {
 		}
 
 		if (messageInput.value.includes(":" + emojiCode + ":")) {
-			messageInput.value = messageInput.value.replace(":" + emojiCode + ":", value);
+			setMessageInputValue(messageInput.value.replace(":" + emojiCode + ":", value));
 			messageInput.setAttribute("state", "default");
 			handled = true;
 		}
@@ -2629,7 +2829,7 @@ messageInput.oninput = (/** @type {{ isTrusted: any; }} */ e) => {
 			entryElement.addEventListener("click", function() {
 				for (let i = messageInput.value.length - 1; i >= 0; i--) {
 					if (messageInput.value[i] == ":") {
-						messageInput.value = messageInput.value.slice(0, i) + ":" + emojiCode + ":";
+						setMessageInputValue(messageInput.value.slice(0, i) + ":" + emojiCode + ":");
 						closeMessageEmojisPanel();
 						break;
 					}
@@ -2653,7 +2853,7 @@ messageInput.oninput = (/** @type {{ isTrusted: any; }} */ e) => {
 			entryLabel.textContent = `:${commandCode}`;
 			entryElement.appendChild(entryLabel);
 			entryElement.addEventListener("click", function() {
-				messageInput.value = ":" + commandCode;
+				setMessageInputValue(":" + commandCode);
 				closeMessageEmojisPanel();
 			})
 			entryElement.appendChild(stringToHtml(value))
@@ -2891,8 +3091,8 @@ overlayMenuOldCloseButton.addEventListener("click", function() {
 	overlayMenuOld.removeAttribute("open");
 });
 
-// Chat management
-let blockedUsers = localStorage.blocked?.split(",") || [];
+// Chat management — normalise to numbers to avoid string/number mismatch (old code stored ",")
+let blockedUsers = normaliseBlockedUsers(localStorage.blocked?.split(",") || []);
 /**@type {number|null}*/let targetedIntId = null;
 /**@type {number|null}*/let targetedMsgId = null;
 /**@type {number|null}*/let currentReplyId = null;
@@ -2945,7 +3145,7 @@ chatCloseButton.addEventListener("click", closeChatPanel);
 closeChatPanel();
 
 function closeChatContexts() {
-	chatContext.style.display = "none";
+	hidePopover(chatContext);
 	channelDropParent.removeAttribute("open");
 }
 chatPanel.addEventListener("touchstart", closeChatContexts);
@@ -2996,8 +3196,8 @@ spaceFiller.addEventListener("click", openGame);
 async function onChatContext(e, senderId, msgId) {
 	e.preventDefault();
 
-	if (chatContext.style.display == "block") {
-		chatContext.style.display = "none";
+	if (isPopoverOpen(chatContext)) {
+		hidePopover(chatContext);
 	}
 	else {
 		let msgName = intIdNames.get(senderId);
@@ -3020,11 +3220,12 @@ async function onChatContext(e, senderId, msgId) {
 
 		targetedMsgId = msgId;
 		targetedIntId = senderId;
-		chatContext.style.display = "block";
+		positionPopover(chatContext, e.clientX, e.clientY);
+		showPopover(chatContext);
 		mentionUserButton.textContent = `${await translate("mention")} ${identifier}`;
 		replyUserButton.textContent = `${await translate("replyTo")} ${identifier}`;
 		blockUserButton.textContent =
-			`${await translate(blockedUsers.includes(senderId) ? "unblock" : "block")} ${identifier}`;
+			`${await translate(isBlocked(senderId, blockedUsers) ? "unblock" : "block")} ${identifier}`;
 
 		if (senderId == intId) {
 			blockUserButton.disabled = true;
@@ -3034,9 +3235,6 @@ async function onChatContext(e, senderId, msgId) {
 			blockUserButton.disabled = false;
 			changeMyNameButton.style.display = "none";
 		}
-
-		chatContext.style.left = e.pageX - chatPanel.offsetLeft + "px"
-		chatContext.style.top = e.pageY - chatPanel.offsetTop + "px"
 	}
 }
 mentionUserButton.addEventListener("click", function(e) {
@@ -3045,7 +3243,7 @@ mentionUserButton.addEventListener("click", function(e) {
 	}
 
 	chatMentionUser(targetedIntId);
-	chatContext.style.display = "none";
+	hidePopover(chatContext);
 });
 replyUserButton.addEventListener("click", function(e) {
 	if (!targetedIntId) {
@@ -3053,17 +3251,19 @@ replyUserButton.addEventListener("click", function(e) {
 	}
 
 	chatReply(targetedMsgId, targetedIntId);
-	chatContext.style.display = "none";
+	hidePopover(chatContext);
 })
 blockUserButton.addEventListener("click", function(e) {
-	if (blockedUsers.includes(targetedIntId)) {
-		blockedUsers.splice(blockedUsers.indexOf(targetedIntId), 1);
+	if (targetedIntId == null) return;
+	const normalisedTargetId = Number(targetedIntId);
+	if (isBlocked(normalisedTargetId, blockedUsers)) {
+		blockedUsers.splice(blockedUsers.indexOf(normalisedTargetId), 1);
 	}
-	else if (targetedIntId != intId) {
-		blockedUsers.push(targetedIntId);
+	else if (normalisedTargetId !== intId) {
+		blockedUsers.push(normalisedTargetId);
 	}
-	localStorage.blocked = blockedUsers;
-	chatContext.style.display = "none";
+	localStorage.blocked = blockedUsers.join(",");
+	hidePopover(chatContext);
 });
 changeMyNameButton.addEventListener("click", function(e) {
 	if (!intId) {
@@ -3072,7 +3272,7 @@ changeMyNameButton.addEventListener("click", function(e) {
 
 	namePanel.style.visibility = "visible";
 	nameInput.value = intIdNames.get(intId) || "";
-	chatContext.style.display = "none";
+	hidePopover(chatContext);
 });
 
 // TODO: For some inconceivably stupid reason this keeps activating on false positives? Find a solution

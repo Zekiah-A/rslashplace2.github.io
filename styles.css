@@ -1111,6 +1111,7 @@ body[eventphase="3"] .coverer-title {
 
 .message-input-actions {
 	position: absolute;
+	z-index: 3;
 	right: 2px;
 	top: 0;
 	height: 36px;
@@ -1128,8 +1129,33 @@ body[eventphase="3"] .coverer-title {
 }
 
 #messageInput {
+	position: relative;
+	z-index: 1;
 	resize: none;
 	width: 100%;
+}
+
+#messageInputMirror {
+	position: absolute;
+	inset: 0;
+	z-index: 2;
+	width: 100%;
+	height: 100%;
+	box-sizing: border-box;
+	overflow: hidden;
+	color: transparent;
+	line-height: normal;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+	pointer-events: none;
+	user-select: none;
+}
+
+#messageInputMirror .linked-mention {
+	background: rgba(255, 87, 0, 0.2);
+	background: color-mix(in srgb, var(--reddit-orange) 20%, transparent);
+	border-radius: 2px;
+	box-shadow: inset 0 -2px var(--reddit-orange);
 }
 
 .chat-bottom-panel {
@@ -1251,6 +1277,48 @@ body[eventphase="3"] .coverer-title {
 	background-color: #ffff0080;
 }
 
+r-live-chat-message .chat-mention {
+	color: var(--reddit-orange);
+	cursor: help;
+	text-decoration: underline dotted;
+	text-underline-offset: 2px;
+}
+
+r-live-chat-message .chat-mention:focus-visible {
+	border-radius: 2px;
+	outline: 2px solid var(--reddit-orange);
+	outline-offset: 1px;
+}
+
+.chat-mention-popover {
+	display: none;
+	flex-direction: column;
+	gap: 2px;
+	padding: 6px 8px;
+	border: 1px solid var(--ui-panel-hover, #aaa);
+	border-radius: 4px;
+	background: var(--ui-panel-bg, white);
+	color: var(--ui-text, black);
+	box-shadow: var(--ui-shadow, 0 2px 8px #0005);
+	font-family: mono;
+	font-size: 12px;
+	white-space: nowrap;
+	pointer-events: none;
+}
+
+.chat-mention-popover:popover-open {
+	display: flex;
+}
+
+@supports (position-area: block-end) {
+	.chat-mention-popover:popover-open {
+		inset: auto;
+		margin: 4px;
+		position-area: block-end span-inline-end;
+		position-try-fallbacks: flip-block, flip-inline;
+	}
+}
+
 .chat-message-list > .message[reply] {
 	background-color: #e4efff;
 }
@@ -1318,6 +1386,34 @@ body[eventphase="3"] .coverer-title {
 	align-items: center;
 	height: 100%;
 	padding: 0;	
+}
+
+.channel-mention-badge {
+	position: absolute;
+	top: -6px;
+	right: -6px;
+	min-width: 16px;
+	height: 16px;
+	padding: 0 4px;
+	border-radius: 999px;
+	background: var(--reddit-orange);
+	color: white;
+	font-size: 10px;
+	line-height: 16px;
+	text-align: center;
+	pointer-events: none;
+	z-index: 1;
+}
+
+.channel-mention-badge.inline {
+	position: static;
+	margin-left: auto;
+	top: auto;
+	right: auto;
+}
+
+#channelDropMenu > li {
+	position: relative;
 }
 
 #captchaPopup {
@@ -1442,6 +1538,9 @@ body[eventphase="3"] .coverer-title {
 	align-self: center;
 	text-align: left;
 	text-align: left;
+}
+.message-mention-suggestion > small {
+	opacity: 0.7;
 }
 #messageReplyPanel {
 	height: calc(var(--message-input-height) + 48px);
@@ -1741,6 +1840,11 @@ kbd {
 	user-select: none;
 	transition: transform .1s;
 	z-index: 2;
+}
+.context-menu[popover] {
+	position: fixed;
+	inset: auto;
+	margin: 0;
 }
 .context-menu > menu {
 	padding: 0px;
