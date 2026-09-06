@@ -695,10 +695,11 @@ describe("page game IPC adapter", () => {
 							validate: () => true,
 							handler: () => { workerEndpoint.send(1); }
 						}],
-						[4, {
-							kind: "message",
+						[20, {
+							kind: "request",
 							validate: () => true,
-							handler: value => { placements.push(value); }
+							validateResult: value => typeof value === "boolean",
+							handler: value => { placements.push(value); return true; }
 						}]
 					]),
 					outgoing: new Map([
@@ -725,7 +726,7 @@ describe("page game IPC adapter", () => {
 		expect(() => ipc.putPixel(-1, 0)).toThrow();
 		expect(() => ipc.putPixel(0, 256)).toThrow();
 		expect(() => ipc.putPixel(0.5, 0)).toThrow();
-		ipc.putPixel(0xFFFF_FFFF, 255);
+		expect(await ipc.putPixel(0xFFFF_FFFF, 255)).toBe(true);
 		await tick();
 
 		expect(placements).toEqual([[0xFFFF_FFFF, 255]]);
@@ -1456,4 +1457,34 @@ test("ignored page state notifications preserve subsequent IPC traffic", async (
 	expect(received).toEqual([["id", 42], ["online", 12]]);
 	expect(terminated).toBe(0);
 	ipc.dispose(); peer.dispose();
+});
+
+
+test("placement acknowledgement failure closes the stream without a legacy retry", async () => {
+	let peer;
+	let terminated = 0;
+	const closes = [];
+	const worker = {
+		postMessage(data, ports) {
+			peer = createTestWorkerEndpoint(data, ports[0], {
+				incoming: new Map([
+					[2, {kind: "message", validate: () => true, handler: () => peer.send(1)}],
+					[20, {kind: "request", validate: () => true, validateResult: value => typeof value === "boolean",
+						handler: () => { throw new Error("send failed"); }}]
+				]),
+				outgoing: new Map([0,1].map(call => [call, {kind: "message", validate: () => true}]))
+			});
+			peer.send(0);
+		},
+		terminate() { terminated++; }
+	};
+	const ipc = await createGameIpc(worker, "wss://example.invalid", "wss://example.invalid", 100,
+		[() => undefined, value => closes.push(value)]);
+	ipc.connect("device", null);
+	await tick(); await tick();
+	await expect(ipc.putPixel(0,1)).rejects.toThrow();
+	expect(terminated).toBe(1);
+	expect(closes).toEqual([[1002, "Placement acknowledgement failed"]]);
+	expect(() => ipc.putPixel(0,1)).toThrow("Game IPC endpoint is closed");
+	peer.dispose();
 });

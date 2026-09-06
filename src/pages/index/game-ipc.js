@@ -3,7 +3,7 @@ import { createStrictIpcEndpoint, makeIpcRequest, sendIpcMessage } from "shared-
 /** @typedef {[number, number, number, number, number]} ClientActivity */
 /** @typedef {[string, string, string|null]} ConnectArgs */
 /** @typedef {[number, string[], Uint8Array]} DefaultCaptchaChallenge */
-/** @typedef {{ chatReact: (messageId: number, reaction: string) => void, chatReport: (messageId: number, reason: string) => void, connect: (device: string, vip: string|null) => void, fetchLinkKey: () => Promise<{linkKey:string,instanceId:number}>, putPixel: (position: number, colour: number) => void, reportAutomatedActivity: (activity: ClientActivity) => void, reportCanvasPixel: (position: number, reason: string) => void, requestChatHistory: (channel: string, anchorMsgId?: number, msgCount?: number) => void, requestPixelPlacers: (position: number, width: number, height: number) => void, sendCaptchaResult: (captchaId: number, result: string) => void, sendChallengeResult: (result: bigint) => void, sendHCaptchaResult: (captchaId: number, result: string) => void, sendLiveChat: (message: string, channel: string, replyId: number|null) => void, sendModAction: (value: object) => Promise<string>, sendPlaceChat: (message: string, position: number) => void, sendTurnstileResult: (captchaId: number, result: string) => void, setName: (name: string) => void, spectateUser: (userId: number) => void, unspectateUser: () => void, stop: () => void, dispose: () => void }} GameIpc */
+/** @typedef {{ chatReact: (messageId: number, reaction: string) => void, chatReport: (messageId: number, reason: string) => void, connect: (device: string, vip: string|null) => void, fetchLinkKey: () => Promise<{linkKey:string,instanceId:number}>, putPixel: (position: number, colour: number) => Promise<boolean>, reportAutomatedActivity: (activity: ClientActivity) => void, reportCanvasPixel: (position: number, reason: string) => void, requestChatHistory: (channel: string, anchorMsgId?: number, msgCount?: number) => void, requestPixelPlacers: (position: number, width: number, height: number) => void, sendCaptchaResult: (captchaId: number, result: string) => void, sendChallengeResult: (result: bigint) => void, sendHCaptchaResult: (captchaId: number, result: string) => void, sendLiveChat: (message: string, channel: string, replyId: number|null) => void, sendModAction: (value: object) => Promise<string>, sendPlaceChat: (message: string, position: number) => void, sendTurnstileResult: (captchaId: number, result: string) => void, setName: (name: string) => void, spectateUser: (userId: number) => void, unspectateUser: () => void, stop: () => void, dispose: () => void }} GameIpc */
 const MAX_DATE_MS = 8_640_000_000_000_000;
 const textEncoder = new TextEncoder();
 
@@ -470,6 +470,7 @@ export async function createGameIpc(
 					position,
 					colour
 				});
+				return Promise.resolve(true);
 			},
 			/** @param {number} userId */
 			spectateUser(userId) {
@@ -876,9 +877,6 @@ export async function createGameIpc(
 	}], [3, {
 		kind: "message",
 		validate: isDefaultCaptchaResult
-	}], [4, {
-		kind: "message",
-		validate: isPixelPlacement
 	}], [5, {
 		kind: "message",
 		validate: isUint32
@@ -926,6 +924,10 @@ export async function createGameIpc(
 	}], [19, {
 		kind: "message",
 		validate: isCanvasPixelReport
+	}], [20, {
+		kind: "request",
+		validate: isPixelPlacement,
+		validateResult: value => typeof value === "boolean"
 	}]]);
 	let timeout;
 	const timeoutPromise = new Promise((_, reject) => {
@@ -1046,7 +1048,18 @@ export async function createGameIpc(
 			if (connectionState !== 2 || !isPixelPlacement(value)) {
 				throw new Error("Pixel placement is not valid");
 			}
-			endpoint.send(4, value);
+			return endpoint.request(20, value).catch(error => {
+				// A timed-out reply cannot safely be retried on this IPC stream:
+				// a late result would no longer have a matching pending request.
+				if (!disposed) {
+					disposed = true;
+					connectionState = 3;
+					endpoint.dispose("Placement acknowledgement failed");
+					worker.terminate();
+					eventHandlers[1]([1002, "Placement acknowledgement failed"]);
+				}
+				throw error;
+			});
 		},
 		/** @param {number} userId */
 		spectateUser(userId) {
